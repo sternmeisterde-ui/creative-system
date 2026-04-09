@@ -8,10 +8,6 @@ export async function POST(req: NextRequest) {
   const email = (form.get("email") as string ?? "").trim();
   const password = form.get("password") as string ?? "";
 
-  if (!email || !password) {
-    return NextResponse.redirect(new URL("/login?error=empty", req.url));
-  }
-
   const res = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
     method: "POST",
     headers: { "Content-Type": "application/json", "apikey": SUPABASE_ANON_KEY },
@@ -26,18 +22,20 @@ export async function POST(req: NextRequest) {
   };
 
   if (!res.ok || !data.access_token) {
-    const msg = encodeURIComponent(data.error_description ?? "Неверный email или пароль");
-    return NextResponse.redirect(new URL(`/login?error=${msg}`, req.url));
+    const msg = data.error_description ?? "Неверный email или пароль";
+    const response = NextResponse.redirect(new URL("/login", req.url));
+    response.cookies.set("sb-login-error", msg, { path: "/", maxAge: 10, sameSite: "lax" });
+    return response;
   }
 
-  const greeting = encodeURIComponent(data.user?.user_metadata?.greeting ?? "Добро пожаловать!");
-  const response = NextResponse.redirect(new URL(`/login?greeting=${greeting}`, req.url));
-
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
+  const greeting = data.user?.user_metadata?.greeting ?? "Добро пожаловать!";
+
+  const response = NextResponse.redirect(new URL("/login", req.url));
   response.cookies.set("sb-access-token", data.access_token, { path: "/", expires, sameSite: "lax", httpOnly: false });
+  response.cookies.set("sb-greeting", greeting, { path: "/", maxAge: 30, sameSite: "lax" });
   if (data.refresh_token) {
     response.cookies.set("sb-refresh-token", data.refresh_token, { path: "/", expires, sameSite: "lax", httpOnly: true });
   }
-
   return response;
 }
