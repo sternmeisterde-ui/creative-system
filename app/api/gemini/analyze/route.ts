@@ -122,7 +122,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "GEMINI_API_KEY не настроен" }, { status: 500 });
   }
 
-  const formData = await req.formData();
+  let formData: FormData;
+  try {
+    formData = await req.formData();
+  } catch {
+    return NextResponse.json({ error: "Файл слишком большой. Используйте видео до 4MB." }, { status: 413 });
+  }
   const analysisMode = (formData.get("mode") as string) ?? "single";
   const file = formData.get("file") as File | null;
   const winner = formData.get("winner") as File | null;

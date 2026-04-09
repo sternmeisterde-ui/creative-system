@@ -98,7 +98,17 @@ export default function AnalyzePage() {
 
   const canAnalyze = mode === "single" ? !!file : (!!winner && !!loser);
 
+  const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
+
   const analyze = async (analysisMode: Mode) => {
+    // Check file sizes before upload
+    const filesToCheck = analysisMode === "single" ? [file] : [winner, loser];
+    for (const f of filesToCheck) {
+      if (f && f.size > MAX_FILE_SIZE) {
+        setError(`Файл "${f.name}" слишком большой (${(f.size / 1024 / 1024).toFixed(1)}MB). Лимит — 4MB. Сожмите видео перед загрузкой.`);
+        return;
+      }
+    }
     setAnalyzing(true);
     setError(null);
     setAnalysis(null);
