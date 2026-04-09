@@ -56,7 +56,7 @@ export default function Sidebar() {
         <div style={{ fontSize: 13, fontWeight: 800, color: "#E2E0DB" }}>Creative System</div>
       </div>
 
-      <nav style={{ flex: 1, marginTop: 16, display: "flex", flexDirection: "column", gap: 2 }}>
+      <nav style={{ flex: 1, marginTop: 16, display: "flex", flexDirection: "column", gap: 2, overflowY: "auto", minHeight: 0 }}>
         {NAV.map(({ href, label, icon }) => {
           const active = path === href || (href !== "/" && path.startsWith(href));
           return (
