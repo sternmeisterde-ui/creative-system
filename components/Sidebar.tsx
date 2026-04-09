@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { createBrowserClient } from "@supabase/ssr";
 
 const NAV = [
   { href: "/", label: "Dashboard", icon: "◈" },
@@ -22,6 +23,17 @@ const NAV = [
 
 export default function Sidebar() {
   const path = usePathname();
+  const router = useRouter();
+  const supabase = createBrowserClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+  );
+
+  async function handleLogout() {
+    await supabase.auth.signOut();
+    router.push("/login");
+    router.refresh();
+  }
 
   return (
     <aside style={{
@@ -69,8 +81,24 @@ export default function Sidebar() {
         })}
       </nav>
 
-      <div style={{ padding: "12px 8px 0", borderTop: "1px solid rgba(255,255,255,0.06)", fontSize: 10, color: "#333" }}>
-        v0.1 — MVP
+      <div style={{ padding: "12px 8px 0", borderTop: "1px solid rgba(255,255,255,0.06)", display: "flex", flexDirection: "column", gap: 8 }}>
+        <button
+          onClick={handleLogout}
+          style={{
+            width: "100%",
+            padding: "8px 12px",
+            background: "transparent",
+            border: "1px solid rgba(255,255,255,0.08)",
+            borderRadius: 8,
+            color: "#555",
+            fontSize: 11,
+            cursor: "pointer",
+            textAlign: "left",
+          }}
+        >
+          Выйти
+        </button>
+        <div style={{ fontSize: 10, color: "#333" }}>v0.1 — MVP</div>
       </div>
     </aside>
   );

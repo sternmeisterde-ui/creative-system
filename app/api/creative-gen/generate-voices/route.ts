@@ -135,7 +135,8 @@ export async function POST(req: NextRequest) {
 
   if (!scenes?.length) return NextResponse.json({ ok: true, succeeded: 0, failed: 0, message: "Все сцены уже обработаны" });
 
-  async function processScene(scene: typeof scenes[number]) {
+  type Scene = NonNullable<typeof scenes>[number];
+  async function processScene(scene: Scene) {
     const dialogue = await extractDialogue(scene.prompt ?? "", briefContext, scene.scene_index ?? 0);
     const { audioBuffer, wordTimestamps, audioDuration } = await generateAudio(dialogue, resolvedVoiceId);
 
