@@ -68,6 +68,28 @@ function FileZone({ label, file, onFile, color }: { label: string; file: File | 
   );
 }
 
+async function uploadFile(file: File): Promise<string> {
+  // Step 1: get signed upload URL
+  const presignRes = await fetch("/api/gemini/presign", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ filename: file.name, contentType: file.type }),
+  });
+  if (!presignRes.ok) throw new Error("Не удалось получить URL для загрузки");
+  const { signedUrl, token, publicUrl } = await presignRes.json() as { signedUrl: string; token: string; publicUrl: string };
+
+  // Step 2: upload directly to Supabase Storage
+  const uploadRes = await fetch(signedUrl, {
+    method: "PUT",
+    headers: { "Content-Type": file.type, "x-upsert": "true" },
+    body: file,
+  });
+  if (!uploadRes.ok) throw new Error(`Ошибка загрузки файла: ${uploadRes.status}`);
+
+  void token; // token included in signedUrl
+  return publicUrl;
+}
+
 export default function AnalyzePage() {
   const [mode, setMode] = useState<Mode>("single");
   const [file, setFile] = useState<File | null>(null);
@@ -78,8 +100,9 @@ export default function AnalyzePage() {
   const [error, setError] = useState<string | null>(null);
   const [recipe, setRecipe] = useState<string | null>(null);
   const [recipeLoading, setRecipeLoading] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
 
-  const reset = () => { setFile(null); setWinner(null); setLoser(null); setAnalysis(null); setError(null); };
+  const reset = () => { setFile(null); setWinner(null); setLoser(null); setAnalysis(null); setError(null); setUploadStatus(null); };
 
   const loadRecipe = async () => {
     setRecipeLoading(true);
@@ -98,31 +121,36 @@ export default function AnalyzePage() {
 
   const canAnalyze = mode === "single" ? !!file : (!!winner && !!loser);
 
-  const MAX_FILE_SIZE = 4 * 1024 * 1024; // 4MB
-
   const analyze = async (analysisMode: Mode) => {
-    // Check file sizes before upload
-    const filesToCheck = analysisMode === "single" ? [file] : [winner, loser];
-    for (const f of filesToCheck) {
-      if (f && f.size > MAX_FILE_SIZE) {
-        setError(`Файл "${f.name}" слишком большой (${(f.size / 1024 / 1024).toFixed(1)}MB). Лимит — 4MB. Сожмите видео перед загрузкой.`);
-        return;
-      }
-    }
     setAnalyzing(true);
     setError(null);
     setAnalysis(null);
+    setUploadStatus(null);
+
     try {
-      const fd = new FormData();
-      fd.append("mode", analysisMode);
-      if (analysisMode === "single" && file) fd.append("file", file);
-      if (analysisMode !== "single" && winner) fd.append("winner", winner);
-      if (analysisMode !== "single" && loser) fd.append("loser", loser);
+      let body: Record<string, string>;
+
+      if (analysisMode === "single" && file) {
+        setUploadStatus("Загружаем файл...");
+        const fileUrl = await uploadFile(file);
+        setUploadStatus("Анализируем...");
+        body = { mode: analysisMode, fileUrl, fileName: file.name };
+      } else if (winner && loser) {
+        setUploadStatus("Загружаем виннера...");
+        const winnerUrl = await uploadFile(winner);
+        setUploadStatus("Загружаем лузера...");
+        const loserUrl = await uploadFile(loser);
+        setUploadStatus("Анализируем...");
+        body = { mode: analysisMode, winnerUrl, loserUrl, winnerName: winner.name, loserName: loser.name };
+      } else {
+        return;
+      }
 
       const res = await fetch("/api/gemini/analyze", {
         method: "POST",
-        body: fd,
-        signal: AbortSignal.timeout(290_000), // 4m50s — чуть меньше maxDuration
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+        signal: AbortSignal.timeout(290_000),
       });
       const data = await res.json();
       if (!res.ok || data.error) setError(data.error ?? "Ошибка");
@@ -130,10 +158,11 @@ export default function AnalyzePage() {
     } catch (e) {
       const msg = e instanceof Error && e.name === "TimeoutError"
         ? "Превышено время ожидания — попробуйте файл поменьше"
-        : "Сетевая ошибка";
+        : e instanceof Error ? e.message : "Сетевая ошибка";
       setError(msg);
     } finally {
       setAnalyzing(false);
+      setUploadStatus(null);
     }
   };
 
@@ -196,24 +225,24 @@ export default function AnalyzePage() {
         )}
 
         {canAnalyze && (
-          <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap" }}>
+          <div style={{ marginTop: 16, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
             {mode === "single" ? (
               <Button variant="primary" onClick={() => analyze("single")} disabled={analyzing}>
-                {analyzing ? "⏳ Анализируем..." : "🔍 Анализировать"}
+                {analyzing ? `⏳ ${uploadStatus ?? "Анализируем..."}` : "🔍 Анализировать"}
               </Button>
             ) : (
               <>
                 <Button variant="primary" onClick={() => analyze("winner")} disabled={analyzing}
                   style={{ background: "rgba(110,200,160,0.15)", borderColor: "rgba(110,200,160,0.3)", color: "#6EC8A0" }}>
-                  {analyzing ? "⏳..." : "🏆 Почему виннер победил"}
+                  {analyzing ? `⏳ ${uploadStatus ?? "..."}` : "🏆 Почему виннер победил"}
                 </Button>
                 <Button variant="primary" onClick={() => analyze("loser")} disabled={analyzing}
                   style={{ background: "rgba(217,107,107,0.15)", borderColor: "rgba(217,107,107,0.3)", color: "#D96B6B" }}>
-                  {analyzing ? "⏳..." : "📉 Почему лузер провалился"}
+                  {analyzing ? `⏳ ${uploadStatus ?? "..."}` : "📉 Почему лузер провалился"}
                 </Button>
               </>
             )}
-            <Button onClick={reset}>Очистить</Button>
+            <Button onClick={reset} disabled={analyzing}>Очистить</Button>
           </div>
         )}
       </Card>

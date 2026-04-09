@@ -53,10 +53,18 @@ const LOSER_PROMPT = `${CONTEXT}
 
 Отвечай на русском. Только actionable выводы.`;
 
-// Upload file to Gemini Files API, return fileUri
-async function uploadToFilesApi(file: File): Promise<string> {
-  const buffer = await file.arrayBuffer();
+// Fetch file from URL into buffer
+async function fetchBuffer(url: string): Promise<{ buffer: ArrayBuffer; mimeType: string; name: string }> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`Failed to fetch file from storage: ${res.status}`);
+  const mimeType = res.headers.get("content-type") ?? "application/octet-stream";
+  const buffer = await res.arrayBuffer();
+  const name = url.split("/").pop()?.split("?")[0] ?? "file";
+  return { buffer, mimeType, name };
+}
 
+// Upload file to Gemini Files API, return fileUri
+async function uploadToFilesApi(buffer: ArrayBuffer, mimeType: string, displayName: string): Promise<string> {
   // Step 1: initiate resumable upload
   const initRes = await fetch(`${FILES_API}?key=${GEMINI_API_KEY}`, {
     method: "POST",
@@ -64,10 +72,10 @@ async function uploadToFilesApi(file: File): Promise<string> {
       "X-Goog-Upload-Protocol": "resumable",
       "X-Goog-Upload-Command": "start",
       "X-Goog-Upload-Header-Content-Length": String(buffer.byteLength),
-      "X-Goog-Upload-Header-Content-Type": file.type,
+      "X-Goog-Upload-Header-Content-Type": mimeType,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ file: { display_name: file.name } }),
+    body: JSON.stringify({ file: { display_name: displayName } }),
   });
 
   const uploadUrl = initRes.headers.get("x-goog-upload-url");
@@ -79,7 +87,7 @@ async function uploadToFilesApi(file: File): Promise<string> {
     headers: {
       "X-Goog-Upload-Command": "upload, finalize",
       "X-Goog-Upload-Offset": "0",
-      "Content-Type": file.type,
+      "Content-Type": mimeType,
     },
     body: buffer,
   });
@@ -107,14 +115,10 @@ async function uploadToFilesApi(file: File): Promise<string> {
   throw new Error("Файл не стал активным за 60 секунд");
 }
 
-async function filePart(file: File) {
-  // Use Files API for videos or files > 5MB, inline for small images
-  if (file.type.startsWith("video/") || file.size > 5 * 1024 * 1024) {
-    const fileUri = await uploadToFilesApi(file);
-    return { file_data: { mime_type: file.type, file_uri: fileUri } };
-  }
-  const buffer = await file.arrayBuffer();
-  return { inline_data: { mime_type: file.type, data: Buffer.from(buffer).toString("base64") } };
+async function urlToPart(url: string) {
+  const { buffer, mimeType, name } = await fetchBuffer(url);
+  const fileUri = await uploadToFilesApi(buffer, mimeType, name);
+  return { file_data: { mime_type: mimeType, file_uri: fileUri } };
 }
 
 export async function POST(req: NextRequest) {
@@ -122,32 +126,30 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "GEMINI_API_KEY не настроен" }, { status: 500 });
   }
 
-  let formData: FormData;
+  let body: { mode?: string; fileUrl?: string; winnerUrl?: string; loserUrl?: string; fileName?: string; winnerName?: string; loserName?: string };
   try {
-    formData = await req.formData();
+    body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Файл слишком большой. Используйте видео до 4MB." }, { status: 413 });
+    return NextResponse.json({ error: "Невалидный JSON" }, { status: 400 });
   }
-  const analysisMode = (formData.get("mode") as string) ?? "single";
-  const file = formData.get("file") as File | null;
-  const winner = formData.get("winner") as File | null;
-  const loser = formData.get("loser") as File | null;
+
+  const { mode: analysisMode = "single", fileUrl, winnerUrl, loserUrl, fileName, winnerName, loserName } = body;
 
   let prompt: string;
   let parts: unknown[];
 
   try {
     if (analysisMode === "single") {
-      if (!file) return NextResponse.json({ error: "Файл обязателен" }, { status: 400 });
+      if (!fileUrl) return NextResponse.json({ error: "fileUrl обязателен" }, { status: 400 });
       prompt = SINGLE_PROMPT;
-      parts = [{ text: prompt }, await filePart(file)];
+      parts = [{ text: prompt }, await urlToPart(fileUrl)];
     } else {
-      if (!winner || !loser) return NextResponse.json({ error: "Нужны оба файла: виннер и лузер" }, { status: 400 });
+      if (!winnerUrl || !loserUrl) return NextResponse.json({ error: "Нужны оба URL: winnerUrl и loserUrl" }, { status: 400 });
       prompt = analysisMode === "winner" ? WINNER_PROMPT : LOSER_PROMPT;
       parts = [
         { text: prompt },
-        { text: "ВИННЕР:" }, await filePart(winner),
-        { text: "ЛУЗЕР:" }, await filePart(loser),
+        { text: "ВИННЕР:" }, await urlToPart(winnerUrl),
+        { text: "ЛУЗЕР:" }, await urlToPart(loserUrl),
       ];
     }
   } catch (e) {
@@ -181,9 +183,9 @@ export async function POST(req: NextRequest) {
   await supabase.from("gemini_analyses").insert({
     mode: analysisMode,
     analysis: text,
-    winner_name: winner?.name ?? null,
-    loser_name: loser?.name ?? null,
-    file_name: file?.name ?? null,
+    winner_name: winnerName ?? null,
+    loser_name: loserName ?? null,
+    file_name: fileName ?? null,
   });
 
   return NextResponse.json({ ok: true, analysis: text });
