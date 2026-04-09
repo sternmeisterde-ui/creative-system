@@ -23,7 +23,7 @@ export async function POST(req: NextRequest) {
 
   if (!res.ok || !data.access_token) {
     const msg = data.error_description ?? "Неверный email или пароль";
-    const response = NextResponse.redirect(new URL("/login", req.url));
+    const response = NextResponse.redirect(new URL("/login", req.url), { status: 302 });
     response.cookies.set("sb-login-error", msg, { path: "/", maxAge: 10, sameSite: "lax" });
     return response;
   }
@@ -31,7 +31,7 @@ export async function POST(req: NextRequest) {
   const expires = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   const greeting = data.user?.user_metadata?.greeting ?? "Добро пожаловать!";
 
-  const response = NextResponse.redirect(new URL("/login", req.url));
+  const response = NextResponse.redirect(new URL("/login", req.url), { status: 302 });
   response.cookies.set("sb-access-token", data.access_token, { path: "/", expires, sameSite: "lax", httpOnly: false });
   response.cookies.set("sb-greeting", greeting, { path: "/", maxAge: 30, sameSite: "lax" });
   if (data.refresh_token) {
