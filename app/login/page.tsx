@@ -29,6 +29,7 @@ export default function LoginPage() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    if (!email || !password) { setError("Введите email и пароль"); return; }
     setLoading(true);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
@@ -114,7 +115,6 @@ export default function LoginPage() {
               type="email"
               value={email}
               onChange={e => setEmail(e.target.value)}
-              required
               autoComplete="email"
               style={{
                 width: "100%",
@@ -136,7 +136,6 @@ export default function LoginPage() {
               type="password"
               value={password}
               onChange={e => setPassword(e.target.value)}
-              required
               autoComplete="current-password"
               style={{
                 width: "100%",
