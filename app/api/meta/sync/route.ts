@@ -1,0 +1,124 @@
+import { NextRequest, NextResponse } from "next/server";
+import { createServiceClient } from "@/lib/supabase";
+
+const TOKEN = process.env.META_ACCESS_TOKEN!;
+const ACCOUNTS = {
+  com: process.env.META_AD_ACCOUNT_ID_COM!,
+  gov: process.env.META_AD_ACCOUNT_ID_GOV!,
+};
+
+const FIELDS = [
+  "ad_id", "ad_name", "adset_id", "adset_name", "campaign_id", "campaign_name",
+  "spend", "impressions", "clicks", "reach", "frequency",
+  "cpm", "ctr", "cpc",
+].join(",");
+
+async function fetchAdInsights(accountId: string, dateFrom: string, dateTo: string) {
+  const url = new URL(`https://graph.facebook.com/v21.0/${accountId}/insights`);
+  url.searchParams.set("access_token", TOKEN);
+  url.searchParams.set("level", "ad");
+  url.searchParams.set("fields", FIELDS);
+  url.searchParams.set("time_range", JSON.stringify({ since: dateFrom, until: dateTo }));
+  url.searchParams.set("time_increment", "1");
+  url.searchParams.set("limit", "500");
+
+  const all: Record<string, unknown>[] = [];
+  let nextUrl: string | null = url.toString();
+
+  while (nextUrl) {
+    const res = await fetch(nextUrl);
+    const json = await res.json() as { data: Record<string, unknown>[]; paging?: { next?: string }; error?: { message: string } };
+    if (json.error) throw new Error(json.error.message);
+    all.push(...(json.data ?? []));
+    nextUrl = json.paging?.next ?? null;
+  }
+
+  return all;
+}
+
+export async function POST(req: NextRequest) {
+  const supabase = createServiceClient();
+
+  // Диапазон дат: последние 30 дней по умолчанию, или из body
+  const body = await req.json().catch(() => ({})) as { dateFrom?: string; dateTo?: string };
+  const today = new Date();
+  const dateTo = body.dateTo ?? today.toISOString().slice(0, 10);
+  const dateFrom = body.dateFrom ?? new Date(today.getTime() - 30 * 864e5).toISOString().slice(0, 10);
+
+  const results: { flow: string; count: number; error?: string }[] = [];
+
+  for (const [flow, accountId] of Object.entries(ACCOUNTS)) {
+    try {
+      const rows = await fetchAdInsights(accountId, dateFrom, dateTo);
+
+      const upsertRows = rows.map(r => ({
+        ad_id:         String(r.ad_id ?? ""),
+        ad_name:       String(r.ad_name ?? ""),
+        adset_id:      String(r.adset_id ?? ""),
+        adset_name:    String(r.adset_name ?? ""),
+        campaign_id:   String(r.campaign_id ?? ""),
+        campaign_name: String(r.campaign_name ?? ""),
+        flow,
+        account_id:    accountId,
+        date:          String(r.date_start ?? dateTo),
+        spend:         parseFloat(String(r.spend ?? 0)),
+        impressions:   parseInt(String(r.impressions ?? 0)),
+        clicks:        parseInt(String(r.clicks ?? 0)),
+        reach:         parseInt(String(r.reach ?? 0)),
+        frequency:     parseFloat(String(r.frequency ?? 0)),
+        cpm:           parseFloat(String(r.cpm ?? 0)),
+        ctr:           parseFloat(String(r.ctr ?? 0)),
+        cpc:           parseFloat(String(r.cpc ?? 0)),
+      }));
+
+      if (upsertRows.length > 0) {
+        const { error } = await supabase
+          .from("meta_ads")
+          .upsert(upsertRows, { onConflict: "ad_id,date" });
+        if (error) throw new Error(error.message);
+      }
+
+      // Лог
+      await supabase.from("meta_sync_log").insert({
+        account_id: accountId,
+        date_from: dateFrom,
+        date_to: dateTo,
+        ads_count: upsertRows.length,
+        status: "ok",
+      });
+
+      results.push({ flow, count: upsertRows.length });
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      await supabase.from("meta_sync_log").insert({
+        account_id: accountId,
+        date_from: dateFrom,
+        date_to: dateTo,
+        ads_count: 0,
+        status: "error",
+        error: msg,
+      });
+      results.push({ flow, count: 0, error: msg });
+    }
+  }
+
+  // After Meta sync — fire Elly sync in background (Elly → alert check chain)
+  const anySuccess = results.some(r => !r.error);
+  if (anySuccess) {
+    const base = process.env.NEXT_PUBLIC_APP_URL ?? process.env.VERCEL_URL
+      ? `https://${process.env.VERCEL_URL}`
+      : "http://localhost:3000";
+    fetch(`${base}/api/pbi/elly-sync`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dateFrom, dateTo }),
+    }).catch(() => {});
+  }
+
+  return NextResponse.json({ ok: true, dateFrom, dateTo, results });
+}
+
+// GET — для проверки и ручного запуска
+export async function GET() {
+  return POST(new NextRequest("http://localhost/api/meta/sync", { method: "POST", body: "{}" }));
+}

@@ -1,0 +1,16 @@
+{
+  "crons": [
+    {
+      "path": "/api/meta/sync",
+      "schedule": "0 7,19 * * *"
+    },
+    {
+      "path": "/api/pbi/elly-sync",
+      "schedule": "10 7,19 * * *"
+    },
+    {
+      "path": "/api/alerts/check",
+      "schedule": "30 7,19 * * *"
+    }
+  ]
+}
