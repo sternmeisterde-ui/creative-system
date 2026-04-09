@@ -90,6 +90,7 @@ export default function LoginPage() {
       alignItems: "center",
       justifyContent: "center",
       minHeight: "100vh",
+      width: "100vw",
       background: "#08090D",
     }}>
       <div style={{
