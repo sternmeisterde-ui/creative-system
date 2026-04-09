@@ -109,12 +109,19 @@ export default function AnalyzePage() {
       if (analysisMode !== "single" && winner) fd.append("winner", winner);
       if (analysisMode !== "single" && loser) fd.append("loser", loser);
 
-      const res = await fetch("/api/gemini/analyze", { method: "POST", body: fd });
+      const res = await fetch("/api/gemini/analyze", {
+        method: "POST",
+        body: fd,
+        signal: AbortSignal.timeout(290_000), // 4m50s — чуть меньше maxDuration
+      });
       const data = await res.json();
       if (!res.ok || data.error) setError(data.error ?? "Ошибка");
       else setAnalysis(data.analysis);
-    } catch {
-      setError("Сетевая ошибка");
+    } catch (e) {
+      const msg = e instanceof Error && e.name === "TimeoutError"
+        ? "Превышено время ожидания — попробуйте файл поменьше"
+        : "Сетевая ошибка";
+      setError(msg);
     } finally {
       setAnalyzing(false);
     }
