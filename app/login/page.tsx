@@ -22,7 +22,7 @@ export default function LoginPage() {
     // in → hold → out → navigate
     const t1 = setTimeout(() => setGreetingPhase("hold"), 800);
     const t2 = setTimeout(() => setGreetingPhase("out"), 2800);
-    const t3 = setTimeout(() => { router.push("/"); router.refresh(); }, 3800);
+    const t3 = setTimeout(() => { window.location.href = "/"; }, 3800);
     return () => { clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
   }, [greeting]);
 
@@ -33,7 +33,7 @@ export default function LoginPage() {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     setLoading(false);
     if (error) {
-      setError("Неверный email или пароль");
+      setError(error.message);
     } else {
       const msg = (data.user?.user_metadata?.greeting as string) ?? "Добро пожаловать!";
       setGreeting(msg);
