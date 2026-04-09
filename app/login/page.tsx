@@ -1,12 +1,10 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createBrowserClient } from "@supabase/ssr";
-import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
-  const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
+  const emailRef = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [greeting, setGreeting] = useState<string | null>(null);
@@ -19,7 +17,6 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!greeting) return;
-    // in → hold → out → navigate
     const t1 = setTimeout(() => setGreetingPhase("hold"), 800);
     const t2 = setTimeout(() => setGreetingPhase("out"), 2800);
     const t3 = setTimeout(() => { window.location.href = "/"; }, 3800);
@@ -29,6 +26,8 @@ export default function LoginPage() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
     setError("");
+    const email = emailRef.current?.value ?? "";
+    const password = passwordRef.current?.value ?? "";
     if (!email || !password) { setError("Введите email и пароль"); return; }
     setLoading(true);
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
@@ -60,24 +59,10 @@ export default function LoginPage() {
           textAlign: "center",
           userSelect: "none",
         }}>
-          <div style={{
-            fontSize: 11,
-            letterSpacing: 5,
-            textTransform: "uppercase",
-            color: "#E8AA42",
-            fontWeight: 600,
-            marginBottom: 20,
-            opacity: 0.7,
-          }}>
+          <div style={{ fontSize: 11, letterSpacing: 5, textTransform: "uppercase", color: "#E8AA42", fontWeight: 600, marginBottom: 20, opacity: 0.7 }}>
             STERNMEISTER
           </div>
-          <div style={{
-            fontSize: 42,
-            fontWeight: 700,
-            color: "#E2E0DB",
-            letterSpacing: -0.5,
-            lineHeight: 1.15,
-          }}>
+          <div style={{ fontSize: 42, fontWeight: 700, color: "#E2E0DB", letterSpacing: -0.5, lineHeight: 1.15 }}>
             {greeting}
           </div>
         </div>
@@ -86,25 +71,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      minHeight: "100vh",
-      width: "100vw",
-      background: "#08090D",
-    }}>
-      <div style={{
-        width: 380,
-        padding: "40px 36px",
-        background: "rgba(255,255,255,0.03)",
-        border: "1px solid rgba(255,255,255,0.08)",
-        borderRadius: 16,
-      }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", width: "100vw", background: "#08090D" }}>
+      <div style={{ width: 380, padding: "40px 36px", background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 16 }}>
         <div style={{ marginBottom: 32, textAlign: "center" }}>
-          <div style={{ fontSize: 9, letterSpacing: 4, textTransform: "uppercase", color: "#E8AA42", fontWeight: 700, marginBottom: 6 }}>
-            STERNMEISTER
-          </div>
+          <div style={{ fontSize: 9, letterSpacing: 4, textTransform: "uppercase", color: "#E8AA42", fontWeight: 700, marginBottom: 6 }}>STERNMEISTER</div>
           <div style={{ fontSize: 20, fontWeight: 800, color: "#E2E0DB" }}>Creative System</div>
         </div>
 
@@ -112,63 +82,31 @@ export default function LoginPage() {
           <div>
             <label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 6 }}>Email</label>
             <input
+              ref={emailRef}
               type="email"
-              value={email}
-              onChange={e => setEmail(e.target.value)}
+              defaultValue=""
               autoComplete="email"
-              style={{
-                width: "100%",
-                padding: "10px 14px",
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                borderRadius: 8,
-                color: "#E2E0DB",
-                fontSize: 14,
-                outline: "none",
-                boxSizing: "border-box",
-              }}
+              style={{ width: "100%", padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#E2E0DB", fontSize: 14, outline: "none", boxSizing: "border-box" }}
             />
           </div>
 
           <div>
             <label style={{ fontSize: 11, color: "#666", display: "block", marginBottom: 6 }}>Пароль</label>
             <input
+              ref={passwordRef}
               type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
+              defaultValue=""
               autoComplete="current-password"
-              style={{
-                width: "100%",
-                padding: "10px 14px",
-                background: "rgba(255,255,255,0.04)",
-                border: "1px solid rgba(255,255,255,0.1)",
-                borderRadius: 8,
-                color: "#E2E0DB",
-                fontSize: 14,
-                outline: "none",
-                boxSizing: "border-box",
-              }}
+              style={{ width: "100%", padding: "10px 14px", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 8, color: "#E2E0DB", fontSize: 14, outline: "none", boxSizing: "border-box" }}
             />
           </div>
 
-          {error && (
-            <div style={{ fontSize: 12, color: "#e74c3c", textAlign: "center" }}>{error}</div>
-          )}
+          {error && <div style={{ fontSize: 12, color: "#e74c3c", textAlign: "center" }}>{error}</div>}
 
           <button
             type="submit"
             disabled={loading}
-            style={{
-              marginTop: 8,
-              padding: "12px",
-              background: loading ? "rgba(232,170,66,0.4)" : "#E8AA42",
-              border: "none",
-              borderRadius: 8,
-              color: "#08090D",
-              fontSize: 14,
-              fontWeight: 700,
-              cursor: loading ? "not-allowed" : "pointer",
-            }}
+            style={{ marginTop: 8, padding: "12px", background: loading ? "rgba(232,170,66,0.4)" : "#E8AA42", border: "none", borderRadius: 8, color: "#08090D", fontSize: 14, fontWeight: 700, cursor: loading ? "not-allowed" : "pointer" }}
           >
             {loading ? "Входим..." : "Войти"}
           </button>
