@@ -266,6 +266,7 @@ function SheetsImportModal({ onClose, onImported }: { onClose: () => void; onImp
     competitor_name: knownSchema ? r.page_name : (r[competitorCol] ?? ""),
     ad_text: knownSchema ? buildAdText(r) : (r[textCol] ?? ""),
     ad_url: r.ad_archive_id ? `https://www.facebook.com/ads/library/?id=${r.ad_archive_id}` : (r.link_url ?? r.ad_url ?? "") || undefined,
+    source: "google_sheets",
     raw_data: knownSchema ? r : undefined,
   }));
 

@@ -11,6 +11,8 @@ interface AdInput {
   ad_text: string;
   ad_url?: string;
   concept_type?: ConceptType;
+  source?: string;
+  raw_data?: Record<string, string>;
 }
 
 // Classify a batch of ads into concept types using Claude
@@ -96,11 +98,12 @@ export async function POST(req: NextRequest) {
 
   // Build rows for Supabase
   const rows = ads.map((ad, i) => ({
-    source: "n8n",
+    source: ad.source ?? "n8n",
     concept_type: conceptTypes[i],
     title: extractTitle(ad.ad_text),
     description: `[${ad.competitor_name}] ${ad.ad_text.slice(0, 1000)}${ad.ad_url ? `\n\nURL: ${ad.ad_url}` : ""}`,
     status: "pending",
+    raw_data: ad.raw_data ?? null,
   }));
 
   const supabase = createServiceClient();
