@@ -30,105 +30,240 @@ const STATUS_COLOR: Record<ConceptStatus, string> = {
   pending: "#E8AA42", approved: "#6EC8A0", rejected: "#D96B6B",
 };
 
-// ── Table view ────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────────
 
-const TABLE_COLS: { key: string; label: string; width?: number }[] = [
-  { key: "page_name",     label: "Конкурент",    width: 130 },
-  { key: "ai_hook",       label: "Хук",          width: 200 },
-  { key: "ai_offer",      label: "Оффер",        width: 180 },
-  { key: "ai_utp",        label: "УТП",          width: 180 },
-  { key: "ai_cta",        label: "CTA",          width: 140 },
-  { key: "ai_psychology", label: "Психология",   width: 160 },
-  { key: "ai_jtbd",       label: "JTBD",         width: 160 },
-  { key: "ai_description",label: "Описание",     width: 200 },
+function getImageUrl(raw: Record<string, string>): string {
+  return raw.image_url ?? raw.snapshot_url ?? raw.thumbnail_url ?? raw.creative_url ?? "";
+}
+
+function getVideoUrl(raw: Record<string, string>): string {
+  return raw.video_url ?? raw.video_hd_url ?? raw.video_sd_url ?? "";
+}
+
+function getAdUrl(raw: Record<string, string>): string {
+  if (raw.ad_archive_id) return `https://www.facebook.com/ads/library/?id=${raw.ad_archive_id}`;
+  return raw.ad_url ?? raw.link_url ?? "";
+}
+
+// ── Detail modal ──────────────────────────────────────────────────────────────
+
+const ANALYSIS_SECTIONS: { key: string; label: string; color: string }[] = [
+  { key: "ai_hook",        label: "Хук",           color: "#C490D1" },
+  { key: "ai_offer",       label: "Оффер",         color: "#FF8B5A" },
+  { key: "ai_utp",         label: "УТП",           color: "#48B8D0" },
+  { key: "ai_cta",         label: "CTA",           color: "#6EC8A0" },
+  { key: "ai_psychology",  label: "Психология",    color: "#E8AA42" },
+  { key: "ai_jtbd",        label: "JTBD",          color: "#C490D1" },
+  { key: "ai_description", label: "Описание",      color: "#AAA" },
+  { key: "ai_transcribe",  label: "Транскрипция",  color: "#888" },
+  { key: "title",          label: "Заголовок",     color: "#DDD" },
+  { key: "body_text",      label: "Текст",         color: "#BBB" },
 ];
 
-function Cell({ text, width }: { text: string; width: number }) {
-  const [expanded, setExpanded] = useState(false);
-  if (!text) return <td style={{ padding: "8px 10px", borderRight: "1px solid rgba(255,255,255,0.05)", color: "#444", fontSize: 11, width }}></td>;
-  const short = text.length > 80 && !expanded;
+function CreativeDetailModal({ concept, onClose, onStatusChange }: {
+  concept: Concept;
+  onClose: () => void;
+  onStatusChange: (id: string, status: ConceptStatus) => void;
+}) {
+  const raw = concept.rawData ?? {};
+  const imageUrl = getImageUrl(raw);
+  const videoUrl = getVideoUrl(raw);
+  const adUrl = getAdUrl(raw);
+  const competitor = raw.page_name ?? concept.title;
+
   return (
-    <td style={{ padding: "8px 10px", borderRight: "1px solid rgba(255,255,255,0.05)", width, maxWidth: width, verticalAlign: "top" }}>
-      <div style={{ fontSize: 11, color: "#CCC", lineHeight: 1.5 }}>
-        {short ? text.slice(0, 80) + "…" : text}
-        {text.length > 80 && (
-          <span onClick={() => setExpanded(v => !v)}
-            style={{ marginLeft: 4, color: "#48B8D0", cursor: "pointer", fontSize: 10 }}>
-            {expanded ? "свернуть" : "ещё"}
-          </span>
-        )}
+    <div style={{ display: "flex", flexDirection: "column", gap: 0, maxHeight: "80vh", overflow: "hidden" }}>
+      {/* Header */}
+      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 16, fontWeight: 800, color: "#EEE" }}>{competitor}</div>
+          <div style={{ display: "flex", gap: 8, marginTop: 6, alignItems: "center" }}>
+            <select
+              value={concept.status}
+              onChange={e => { onStatusChange(concept.id, e.target.value as ConceptStatus); }}
+              style={{
+                fontSize: 11, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 6, color: STATUS_COLOR[concept.status], padding: "4px 8px", cursor: "pointer",
+              }}
+            >
+              <option value="pending">Ожидает</option>
+              <option value="approved">Одобрен</option>
+              <option value="rejected">Отклонён</option>
+            </select>
+            {adUrl && (
+              <a href={adUrl} target="_blank" rel="noreferrer"
+                style={{ fontSize: 11, color: "#48B8D0", textDecoration: "none", border: "1px solid rgba(72,184,208,0.3)", borderRadius: 6, padding: "4px 10px" }}>
+                🔗 Открыть в FB Ads Library
+              </a>
+            )}
+          </div>
+        </div>
       </div>
-    </td>
+
+      <div style={{ display: "grid", gridTemplateColumns: videoUrl || imageUrl ? "280px 1fr" : "1fr", gap: 20, overflowY: "auto" }}>
+        {/* Creative preview */}
+        {(videoUrl || imageUrl) && (
+          <div style={{ flexShrink: 0 }}>
+            {videoUrl ? (
+              <video
+                src={videoUrl}
+                controls
+                style={{ width: "100%", borderRadius: 10, background: "#111", maxHeight: 400, objectFit: "contain" }}
+              />
+            ) : (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={imageUrl}
+                alt={competitor}
+                style={{ width: "100%", borderRadius: 10, objectFit: "cover", maxHeight: 400 }}
+              />
+            )}
+            {raw.ad_archive_id && (
+              <div style={{ fontSize: 10, color: "#444", marginTop: 6, textAlign: "center" }}>
+                ID: {raw.ad_archive_id}
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Analysis */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, overflowY: "auto" }}>
+          {ANALYSIS_SECTIONS.map(({ key, label, color }) => {
+            const val = raw[key];
+            if (!val) return null;
+            return (
+              <div key={key}>
+                <div style={{ fontSize: 10, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: 1, marginBottom: 5 }}>
+                  {label}
+                </div>
+                <div style={{ fontSize: 13, color: "#CCC", lineHeight: 1.7, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)", borderRadius: 8, padding: "10px 12px" }}>
+                  {val}
+                </div>
+              </div>
+            );
+          })}
+
+          {/* Any extra raw fields not in the standard list */}
+          {Object.entries(raw).filter(([k, v]) =>
+            v && !ANALYSIS_SECTIONS.map(s => s.key).includes(k) &&
+            !["page_name", "ad_archive_id", "image_url", "video_url", "snapshot_url", "thumbnail_url", "ad_url", "link_url", "video_hd_url", "video_sd_url", "creative_url"].includes(k)
+          ).map(([k, v]) => (
+            <div key={k}>
+              <div style={{ fontSize: 10, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{k}</div>
+              <div style={{ fontSize: 12, color: "#888", lineHeight: 1.6 }}>{v}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
-function CompetitorTable({ concepts, onStatusChange }: {
+// ── Table view ────────────────────────────────────────────────────────────────
+
+const TABLE_COLS: { key: string; label: string; width: number }[] = [
+  { key: "ai_hook",       label: "Хук",        width: 220 },
+  { key: "ai_offer",      label: "Оффер",      width: 180 },
+  { key: "ai_utp",        label: "УТП",        width: 160 },
+  { key: "ai_cta",        label: "CTA",        width: 130 },
+  { key: "ai_psychology", label: "Психология", width: 150 },
+];
+
+function CompetitorTable({ concepts, onRowClick, onStatusChange }: {
   concepts: Concept[];
+  onRowClick: (c: Concept) => void;
   onStatusChange: (id: string, status: ConceptStatus) => void;
 }) {
-  const rows = concepts.filter(c => c.rawData && c.rawData.page_name);
+  const rows = concepts.filter(c => c.rawData);
 
   if (rows.length === 0) {
     return (
       <div style={{ textAlign: "center", padding: "40px 20px", color: "#555", fontSize: 13 }}>
-        Нет данных с AI-анализом. Импортируйте из Google Sheets с полями ai_hook, ai_offer и т.д.
+        Нет данных. Импортируйте из Google Sheets.
       </div>
     );
   }
 
   return (
-    <div style={{ overflowX: "auto", borderRadius: 10, border: "1px solid rgba(255,255,255,0.07)" }}>
+    <div style={{ overflowX: "auto" }}>
       <table style={{ borderCollapse: "collapse", width: "100%", fontSize: 12 }}>
         <thead>
           <tr style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
+            <th style={{ padding: "10px 10px", width: 48, borderRight: "1px solid rgba(255,255,255,0.05)" }} />
+            <th style={{ padding: "10px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#666", textTransform: "uppercase", letterSpacing: 0.8, borderRight: "1px solid rgba(255,255,255,0.05)", width: 140 }}>Конкурент</th>
             {TABLE_COLS.map(col => (
-              <th key={col.key} style={{
-                padding: "10px 10px", textAlign: "left", fontSize: 10, fontWeight: 700,
-                color: "#666", textTransform: "uppercase", letterSpacing: 0.8,
-                borderRight: "1px solid rgba(255,255,255,0.05)", width: col.width,
-              }}>
+              <th key={col.key} style={{ padding: "10px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#666", textTransform: "uppercase", letterSpacing: 0.8, borderRight: "1px solid rgba(255,255,255,0.05)", width: col.width }}>
                 {col.label}
               </th>
             ))}
-            <th style={{ padding: "10px 10px", fontSize: 10, fontWeight: 700, color: "#666", textTransform: "uppercase", letterSpacing: 0.8, width: 120 }}>Статус</th>
-            <th style={{ padding: "10px 10px", width: 60 }} />
+            <th style={{ padding: "10px 10px", fontSize: 10, fontWeight: 700, color: "#666", textTransform: "uppercase", letterSpacing: 0.8, width: 110 }}>Статус</th>
           </tr>
         </thead>
         <tbody>
           {rows.map((c, i) => {
             const raw = c.rawData!;
-            const archiveId = raw.ad_archive_id;
-            const adUrl = archiveId ? `https://www.facebook.com/ads/library/?id=${archiveId}` : "";
+            const imageUrl = getImageUrl(raw);
+            const competitor = raw.page_name ?? c.title;
+
             return (
-              <tr key={c.id} style={{
-                borderBottom: "1px solid rgba(255,255,255,0.04)",
-                background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)",
-                opacity: c.status === "rejected" ? 0.5 : 1,
-              }}>
-                {TABLE_COLS.map(col => (
-                  <Cell key={col.key} text={raw[col.key] ?? ""} width={col.width ?? 160} />
-                ))}
-                <td style={{ padding: "8px 10px", verticalAlign: "top" }}>
+              <tr
+                key={c.id}
+                onClick={() => onRowClick(c)}
+                style={{
+                  borderBottom: "1px solid rgba(255,255,255,0.04)",
+                  background: i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)",
+                  opacity: c.status === "rejected" ? 0.5 : 1,
+                  cursor: "pointer",
+                  transition: "background 0.1s",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = "rgba(72,184,208,0.05)")}
+                onMouseLeave={e => (e.currentTarget.style.background = i % 2 === 0 ? "transparent" : "rgba(255,255,255,0.01)")}
+              >
+                {/* Thumbnail */}
+                <td style={{ padding: "6px 8px", borderRight: "1px solid rgba(255,255,255,0.05)", width: 48 }} onClick={e => e.stopPropagation()}>
+                  {imageUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img src={imageUrl} alt="" style={{ width: 36, height: 36, borderRadius: 6, objectFit: "cover", display: "block" }} />
+                  ) : (
+                    <div style={{ width: 36, height: 36, borderRadius: 6, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 13, color: "#555" }}>
+                      {competitor.slice(0, 1).toUpperCase()}
+                    </div>
+                  )}
+                </td>
+
+                {/* Competitor name */}
+                <td style={{ padding: "8px 10px", borderRight: "1px solid rgba(255,255,255,0.05)", width: 140, verticalAlign: "top" }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#DDD" }}>{competitor}</div>
+                  {getAdUrl(raw) && (
+                    <a href={getAdUrl(raw)} target="_blank" rel="noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      style={{ fontSize: 10, color: "#48B8D0", textDecoration: "none" }}>FB Ads →</a>
+                  )}
+                </td>
+
+                {/* Analysis columns */}
+                {TABLE_COLS.map(col => {
+                  const text = raw[col.key] ?? "";
+                  return (
+                    <td key={col.key} style={{ padding: "8px 10px", borderRight: "1px solid rgba(255,255,255,0.05)", width: col.width, maxWidth: col.width, verticalAlign: "top" }}>
+                      <div style={{ fontSize: 11, color: "#BBB", lineHeight: 1.5, overflow: "hidden", display: "-webkit-box", WebkitLineClamp: 3, WebkitBoxOrient: "vertical" }}>
+                        {text}
+                      </div>
+                    </td>
+                  );
+                })}
+
+                {/* Status */}
+                <td style={{ padding: "8px 10px", verticalAlign: "top", width: 110 }} onClick={e => e.stopPropagation()}>
                   <select
                     value={c.status}
                     onChange={e => onStatusChange(c.id, e.target.value as ConceptStatus)}
-                    style={{
-                      fontSize: 11, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)",
-                      borderRadius: 6, color: STATUS_COLOR[c.status], padding: "4px 6px", cursor: "pointer",
-                    }}
+                    style={{ fontSize: 11, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: STATUS_COLOR[c.status], padding: "4px 6px", cursor: "pointer" }}
                   >
                     <option value="pending">Ожидает</option>
                     <option value="approved">Одобрен</option>
                     <option value="rejected">Отклонён</option>
                   </select>
-                </td>
-                <td style={{ padding: "8px 10px", verticalAlign: "top", textAlign: "center" }}>
-                  {adUrl && (
-                    <a href={adUrl} target="_blank" rel="noreferrer"
-                      style={{ fontSize: 14, textDecoration: "none" }} title="Открыть в FB Ads Library">
-                      🔗
-                    </a>
-                  )}
                 </td>
               </tr>
             );
@@ -159,24 +294,21 @@ function ConceptForm({ initial, onSave, onCancel }: {
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-        <div>
-          <Label>Тип</Label>
+        <div><Label>Тип</Label>
           <select value={form.conceptType} onChange={f("conceptType")}>
             {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
           </select>
         </div>
-        <div>
-          <Label>Источник</Label>
-          <input value={form.source} onChange={f("source")} placeholder="manual / apify / google_sheets..." />
+        <div><Label>Источник</Label>
+          <input value={form.source} onChange={f("source")} placeholder="manual / apify..." />
         </div>
       </div>
-      <div><Label>Название / идея *</Label><input value={form.title} onChange={f("title")} placeholder="Что именно работает у конкурента..." /></div>
-      <div><Label>Описание / транскрипция</Label><textarea value={form.description} onChange={f("description")} style={{ minHeight: 120 }} placeholder="Подробное описание, текст с экрана, структура видео..." /></div>
-      <div>
-        <Label>Статус</Label>
+      <div><Label>Название *</Label><input value={form.title} onChange={f("title")} /></div>
+      <div><Label>Описание</Label><textarea value={form.description} onChange={f("description")} style={{ minHeight: 100 }} /></div>
+      <div><Label>Статус</Label>
         <select value={form.status} onChange={f("status")}>
-          <option value="pending">Ожидает оценки</option>
-          <option value="approved">Одобрен для тестирования</option>
+          <option value="pending">Ожидает</option>
+          <option value="approved">Одобрен</option>
           <option value="rejected">Отклонён</option>
         </select>
       </div>
@@ -192,8 +324,7 @@ function ConceptForm({ initial, onSave, onCancel }: {
 
 async function generateHypothesis(concepts: Concept[]): Promise<string> {
   const res = await fetch("/api/ai/competitor-hypothesis", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
+    method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ concepts }),
   });
   const data = await res.json();
@@ -210,12 +341,10 @@ function buildAdText(row: Record<string, string>): string {
   if (row.body_text) parts.push(`Текст: ${row.body_text}`);
   if (row.ai_hook) parts.push(`Хук: ${row.ai_hook}`);
   if (row.ai_utp) parts.push(`УТП: ${row.ai_utp}`);
-  if (row.ai_jtbd) parts.push(`JTBD: ${row.ai_jtbd}`);
   if (row.ai_offer) parts.push(`Оффер: ${row.ai_offer}`);
   if (row.ai_cta) parts.push(`CTA: ${row.ai_cta}`);
   if (row.ai_psychology) parts.push(`Психология: ${row.ai_psychology}`);
   if (row.ai_description) parts.push(`Описание: ${row.ai_description}`);
-  if (row.ai_transcribe) parts.push(`Транскрипция: ${row.ai_transcribe}`);
   return parts.join("\n");
 }
 
@@ -232,13 +361,12 @@ function SheetsImportModal({ onClose, onImported }: { onClose: () => void; onImp
   const [knownSchema, setKnownSchema] = useState(false);
   const [competitorCol, setCompetitorCol] = useState("");
   const [textCol, setTextCol] = useState("");
-  const [preview, setPreview] = useState<{ competitor: string; text: string; url: string }[]>([]);
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState<{ imported: number; total: number } | null>(null);
 
   const handleFetch = async () => {
     if (!url.trim()) return;
-    setLoading(true); setError(""); setHeaders([]); setRows([]); setPreview([]); setResult(null);
+    setLoading(true); setError(""); setHeaders([]); setRows([]); setResult(null);
     try {
       const res = await fetch("/api/competitors/sheets", {
         method: "POST", headers: { "Content-Type": "application/json" },
@@ -252,8 +380,8 @@ function SheetsImportModal({ onClose, onImported }: { onClose: () => void; onImp
       if (!known) {
         const h = data.headers as string[];
         const guess = (keys: string[]) => h.find(col => keys.some(k => col.toLowerCase().includes(k))) ?? "";
-        setCompetitorCol(guess(["page_name", "конкурент", "competitor", "компания"]));
-        setTextCol(guess(["body_text", "текст", "text", "описание"]));
+        setCompetitorCol(guess(["page_name", "конкурент", "competitor"]));
+        setTextCol(guess(["body_text", "текст", "text"]));
       }
     } catch (e) { setError(String(e)); } finally { setLoading(false); }
   };
@@ -265,15 +393,10 @@ function SheetsImportModal({ onClose, onImported }: { onClose: () => void; onImp
   }).map(r => ({
     competitor_name: knownSchema ? r.page_name : (r[competitorCol] ?? ""),
     ad_text: knownSchema ? buildAdText(r) : (r[textCol] ?? ""),
-    ad_url: r.ad_archive_id ? `https://www.facebook.com/ads/library/?id=${r.ad_archive_id}` : (r.link_url ?? r.ad_url ?? "") || undefined,
+    ad_url: r.ad_archive_id ? `https://www.facebook.com/ads/library/?id=${r.ad_archive_id}` : (r.ad_url ?? "") || undefined,
     source: "google_sheets",
-    raw_data: knownSchema ? r : undefined,
+    raw_data: r,
   }));
-
-  const handlePreview = () => {
-    const ads = buildAds().slice(0, 3);
-    setPreview(ads.map(a => ({ competitor: a.competitor_name, text: a.ad_text, url: a.ad_url ?? "" })));
-  };
 
   const handleImport = async () => {
     const ads = buildAds();
@@ -297,64 +420,40 @@ function SheetsImportModal({ onClose, onImported }: { onClose: () => void; onImp
       <div>
         <Label>Ссылка на Google Sheets</Label>
         <div style={{ display: "flex", gap: 8 }}>
-          <input value={url} onChange={e => setUrl(e.target.value)}
-            placeholder="https://docs.google.com/spreadsheets/d/..." style={{ flex: 1 }} />
-          <Button variant="primary" onClick={handleFetch} disabled={loading || !url.trim()}>
-            {loading ? "⏳" : "Загрузить"}
-          </Button>
+          <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://docs.google.com/spreadsheets/d/..." style={{ flex: 1 }} />
+          <Button variant="primary" onClick={handleFetch} disabled={loading || !url.trim()}>{loading ? "⏳" : "Загрузить"}</Button>
         </div>
         <div style={{ fontSize: 11, color: "#555", marginTop: 6 }}>Файл → Поделиться → Все у кого есть ссылка → Читатель</div>
       </div>
-
       {error && <div style={{ fontSize: 12, color: "#D96B6B", background: "rgba(217,107,107,0.08)", border: "1px solid rgba(217,107,107,0.2)", borderRadius: 8, padding: "10px 14px" }}>{error}</div>}
-
       {headers.length > 0 && (
-        <>
-          {knownSchema ? (
-            <div style={{ fontSize: 12, background: "rgba(110,200,160,0.06)", border: "1px solid rgba(110,200,160,0.2)", borderRadius: 8, padding: "10px 14px", color: "#6EC8A0" }}>
-              ✓ Распознана схема с AI-анализом. Загружено {rows.length} строк.
-              <br /><span style={{ color: "#666", fontSize: 11 }}>Конкурент ← page_name · {AI_FIELDS.filter(f => f.startsWith("ai_")).length} AI полей · URL ← ad_archive_id</span>
+        knownSchema ? (
+          <div style={{ fontSize: 12, background: "rgba(110,200,160,0.06)", border: "1px solid rgba(110,200,160,0.2)", borderRadius: 8, padding: "10px 14px", color: "#6EC8A0" }}>
+            ✓ Распознана схема с AI-анализом. {rows.length} строк.
+            <br /><span style={{ color: "#666", fontSize: 11 }}>{AI_FIELDS.filter(f => f.startsWith("ai_")).length} AI полей · thumbnail · FB Ads URL</span>
+          </div>
+        ) : (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div><Label>Конкурент</Label>
+              <select value={competitorCol} onChange={e => setCompetitorCol(e.target.value)}>
+                <option value="">— выбери —</option>
+                {headers.map(h => <option key={h} value={h}>{h}</option>)}
+              </select>
             </div>
-          ) : (
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
-              <div>
-                <Label>Колонка: конкурент *</Label>
-                <select value={competitorCol} onChange={e => setCompetitorCol(e.target.value)}>
-                  <option value="">— выбери —</option>
-                  {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </div>
-              <div>
-                <Label>Колонка: текст объявления *</Label>
-                <select value={textCol} onChange={e => setTextCol(e.target.value)}>
-                  <option value="">— выбери —</option>
-                  {headers.map(h => <option key={h} value={h}>{h}</option>)}
-                </select>
-              </div>
+            <div><Label>Текст объявления</Label>
+              <select value={textCol} onChange={e => setTextCol(e.target.value)}>
+                <option value="">— выбери —</option>
+                {headers.map(h => <option key={h} value={h}>{h}</option>)}
+              </select>
             </div>
-          )}
-          <Button onClick={handlePreview} disabled={!readyToImport}>👁 Предпросмотр 3 строк</Button>
-        </>
+          </div>
+        )
       )}
-
-      {preview.length > 0 && (
-        <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: 12, display: "flex", flexDirection: "column", gap: 10 }}>
-          {preview.map((r, i) => (
-            <div key={i} style={{ fontSize: 12, borderBottom: i < preview.length - 1 ? "1px solid rgba(255,255,255,0.04)" : "none", paddingBottom: i < preview.length - 1 ? 10 : 0 }}>
-              <span style={{ color: "#C490D1", fontWeight: 700 }}>{r.competitor}</span>
-              {r.url && <span style={{ marginLeft: 8, fontSize: 10, color: "#444" }}>🔗</span>}
-              <div style={{ color: "#888", marginTop: 3, lineHeight: 1.5 }}>{r.text.slice(0, 250)}{r.text.length > 250 ? "…" : ""}</div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {result && (
         <div style={{ fontSize: 13, fontWeight: 700, color: "#6EC8A0", background: "rgba(110,200,160,0.06)", border: "1px solid rgba(110,200,160,0.2)", borderRadius: 8, padding: "10px 14px" }}>
           ✓ Импортировано {result.imported} из {result.total} строк.
         </div>
       )}
-
       <div style={{ display: "flex", gap: 8, justifyContent: "flex-end" }}>
         <Button onClick={onClose}>Закрыть</Button>
         {readyToImport && !result && (
@@ -371,24 +470,12 @@ function SheetsImportModal({ onClose, onImported }: { onClose: () => void; onImp
 
 function N8nGuideModal({ onClose }: { onClose: () => void }) {
   const webhookUrl = typeof window !== "undefined" ? `${window.location.origin}/api/competitors/import` : "/api/competitors/import";
-  const examplePayload = JSON.stringify({ ads: [{ competitor_name: "БухПро", ad_text: "Хотите работать бухгалтером в Германии?...", ad_url: "https://www.facebook.com/ads/library/?id=..." }] }, null, 2);
-
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
-      <div style={{ fontSize: 12, color: "#AAA", lineHeight: 1.7 }}>Автоматический сбор рекламы конкурентов через Apify + n8n.</div>
-      {[
-        { color: "#E8AA42", title: "Шаг 1 — Apify: Facebook Ads Library Scraper", body: "1. Зарегистрируйтесь на apify.com\n2. Найдите актор Facebook Ads Library Scraper\n3. Настройте: keywords = «бухгалтер Германия»\n4. Возьмите API Token и Actor ID" },
-        { color: "#48B8D0", title: "Шаг 2 — n8n Workflow", body: "① Schedule Trigger — каждый день 09:00\n② HTTP Request — запустить Apify\n③ Wait — 60 сек\n④ HTTP Request — получить результаты\n⑤ Code — трансформация\n⑥ HTTP Request — POST на webhook" },
-      ].map(s => (
-        <div key={s.title}>
-          <div style={{ fontSize: 11, fontWeight: 700, color: s.color, textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>{s.title}</div>
-          <div style={{ fontSize: 12, color: "#999", lineHeight: 1.7, whiteSpace: "pre-line" }}>{s.body}</div>
-        </div>
-      ))}
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      <div style={{ fontSize: 12, color: "#AAA", lineHeight: 1.7 }}>Автоматический сбор рекламы конкурентов через Apify + n8n → Schedule → HTTP → Code → Webhook.</div>
       <div>
-        <div style={{ fontSize: 11, fontWeight: 700, color: "#6EC8A0", textTransform: "uppercase", letterSpacing: 1, marginBottom: 8 }}>Webhook</div>
+        <div style={{ fontSize: 11, fontWeight: 700, color: "#6EC8A0", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>Webhook URL</div>
         <div style={{ fontFamily: "monospace", fontSize: 11, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, padding: "8px 12px", color: "#E8AA42", wordBreak: "break-all" }}>{webhookUrl}</div>
-        <pre style={{ fontFamily: "monospace", fontSize: 10, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 6, padding: 12, color: "#AAA", margin: "10px 0 0", overflow: "auto" }}>{examplePayload}</pre>
       </div>
       <div style={{ display: "flex", justifyContent: "flex-end" }}><Button onClick={onClose}>Закрыть</Button></div>
     </div>
@@ -400,10 +487,10 @@ function N8nGuideModal({ onClose }: { onClose: () => void }) {
 export default function CompetitorsPage() {
   const [concepts, setConcepts] = useState<Concept[]>([]);
   const [modal, setModal] = useState<{ open: boolean; editing?: Concept }>({ open: false });
+  const [detailConcept, setDetailConcept] = useState<Concept | null>(null);
   const [n8nModal, setN8nModal] = useState(false);
   const [sheetsModal, setSheetsModal] = useState(false);
   const [filter, setFilter] = useState<ConceptStatus | "all">("all");
-  const [typeFilter, setTypeFilter] = useState<ConceptType | "all">("all");
   const [search, setSearch] = useState("");
   const [hypothesis, setHypothesis] = useState("");
   const [generating, setGenerating] = useState(false);
@@ -446,7 +533,8 @@ export default function CompetitorsPage() {
 
   const quickStatus = async (id: string, status: ConceptStatus) => {
     await supabase.from("competitor_concepts").update({ status }).eq("id", id);
-    reload();
+    setConcepts(prev => prev.map(c => c.id === id ? { ...c, status } : c));
+    if (detailConcept?.id === id) setDetailConcept(prev => prev ? { ...prev, status } : null);
   };
 
   const handleGenerateHypothesis = async () => {
@@ -459,7 +547,6 @@ export default function CompetitorsPage() {
 
   const filtered = concepts.filter(c => {
     if (filter !== "all" && c.status !== filter) return false;
-    if (typeFilter !== "all" && c.conceptType !== typeFilter) return false;
     if (search) {
       const q = search.toLowerCase();
       const raw = c.rawData ? Object.values(c.rawData).join(" ").toLowerCase() : "";
@@ -474,8 +561,6 @@ export default function CompetitorsPage() {
     rejected: concepts.filter(c => c.status === "rejected").length,
   };
 
-  const tableRows = concepts.filter(c => c.rawData?.page_name).length;
-
   return (
     <div>
       <PageHeader
@@ -486,15 +571,13 @@ export default function CompetitorsPage() {
             {counts.approved > 0 && (
               <Button onClick={handleGenerateHypothesis} disabled={generating}
                 style={{ background: "rgba(232,170,66,0.12)", border: "1px solid rgba(232,170,66,0.3)", color: generating ? "#666" : "#E8AA42" }}>
-                {generating ? "⏳ Генерирую..." : `✨ Гипотезы (${counts.approved})`}
+                {generating ? "⏳..." : `✨ Гипотезы (${counts.approved})`}
               </Button>
             )}
-            <Button onClick={() => setSheetsModal(true)}
-              style={{ border: "1px solid rgba(110,200,160,0.3)", color: "#6EC8A0", background: "rgba(110,200,160,0.08)" }}>
+            <Button onClick={() => setSheetsModal(true)} style={{ border: "1px solid rgba(110,200,160,0.3)", color: "#6EC8A0", background: "rgba(110,200,160,0.08)" }}>
               📊 Импорт из Sheets
             </Button>
-            <Button onClick={() => setN8nModal(true)}
-              style={{ border: "1px solid rgba(196,144,209,0.3)", color: "#C490D1", background: "rgba(196,144,209,0.08)" }}>
+            <Button onClick={() => setN8nModal(true)} style={{ border: "1px solid rgba(196,144,209,0.3)", color: "#C490D1", background: "rgba(196,144,209,0.08)" }}>
               🔗 n8n
             </Button>
             <Button variant="primary" onClick={() => setModal({ open: true })}>+ Добавить</Button>
@@ -531,18 +614,15 @@ export default function CompetitorsPage() {
 
       {/* Toolbar */}
       <div style={{ display: "flex", gap: 8, marginBottom: 16, alignItems: "center", flexWrap: "wrap" }}>
-        {/* View toggle */}
         <div style={{ display: "flex", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, overflow: "hidden", marginRight: 4 }}>
-          {([["table", `📋 Таблица${tableRows > 0 ? ` (${tableRows})` : ""}`], ["cards", "🗂 Карточки"]] as const).map(([v, l]) => (
+          {(["table", "cards"] as const).map(v => (
             <button key={v} onClick={() => setViewMode(v)} style={{
               padding: "7px 14px", fontSize: 11, cursor: "pointer", fontFamily: "inherit", border: "none",
               background: viewMode === v ? "rgba(72,184,208,0.15)" : "rgba(255,255,255,0.02)",
               color: viewMode === v ? "#48B8D0" : "#555", fontWeight: viewMode === v ? 700 : 400,
-            }}>{l}</button>
+            }}>{v === "table" ? "📋 Таблица" : "🗂 Карточки"}</button>
           ))}
         </div>
-
-        {/* Status filter */}
         {(["all", "pending", "approved", "rejected"] as const).map(s => (
           <button key={s} onClick={() => setFilter(s)} style={{
             padding: "6px 12px", borderRadius: 8, fontSize: 11, fontWeight: filter === s ? 700 : 400,
@@ -551,60 +631,78 @@ export default function CompetitorsPage() {
             background: filter === s ? "rgba(232,170,66,0.1)" : "rgba(255,255,255,0.02)",
             color: filter === s ? "#E8AA42" : "#666",
           }}>
-            {s === "all" ? `Все` : s === "pending" ? `Ожидают` : s === "approved" ? `Одобрены` : `Отклонены`}
+            {s === "all" ? "Все" : s === "pending" ? "Ожидают" : s === "approved" ? "Одобрены" : "Отклонены"}
           </button>
         ))}
-
-        {/* Search */}
-        <input
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Поиск..."
-          style={{ marginLeft: "auto", width: 180, fontSize: 12, padding: "6px 12px" }}
-        />
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск..."
+          style={{ marginLeft: "auto", width: 180, fontSize: 12, padding: "6px 12px" }} />
       </div>
 
       {/* Content */}
       {viewMode === "table" ? (
         <Card style={{ padding: 0, overflow: "hidden" }}>
-          <CompetitorTable concepts={filtered} onStatusChange={quickStatus} />
+          <CompetitorTable concepts={filtered} onRowClick={setDetailConcept} onStatusChange={quickStatus} />
         </Card>
       ) : (
         filtered.length === 0 ? (
-          <Empty icon="🔍" text="Нет идей. Добавьте первую находку из рекламы конкурентов." />
+          <Empty icon="🔍" text="Нет данных." />
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {filtered.map(c => (
-              <Card key={c.id} style={{
-                border: c.status === "approved" ? "1px solid rgba(110,200,160,0.2)" : c.status === "rejected" ? "1px solid rgba(217,107,107,0.1)" : "1px solid rgba(255,255,255,0.06)",
-                opacity: c.status === "rejected" ? 0.6 : 1,
-              }}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                      <Badge color={STATUS_COLOR[c.status]}>
-                        {c.status === "pending" ? "Ожидает" : c.status === "approved" ? "Одобрен" : "Отклонён"}
-                      </Badge>
-                      {c.conceptType && <Badge color={TYPE_COLOR[c.conceptType] ?? "#555"}>{TYPE_LABELS[c.conceptType] ?? c.conceptType}</Badge>}
-                      <span style={{ fontSize: 10, color: "#444" }}>{c.source}</span>
+            {filtered.map(c => {
+              const raw = c.rawData ?? {};
+              const imageUrl = getImageUrl(raw);
+              const competitor = raw.page_name ?? c.title;
+              return (
+                <Card key={c.id} onClick={() => setDetailConcept(c)} style={{
+                  cursor: "pointer",
+                  border: c.status === "approved" ? "1px solid rgba(110,200,160,0.2)" : c.status === "rejected" ? "1px solid rgba(217,107,107,0.1)" : "1px solid rgba(255,255,255,0.06)",
+                  opacity: c.status === "rejected" ? 0.6 : 1,
+                }}>
+                  <div style={{ display: "flex", gap: 12, alignItems: "flex-start" }}>
+                    {imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={imageUrl} alt="" style={{ width: 56, height: 56, borderRadius: 8, objectFit: "cover", flexShrink: 0 }} />
+                    ) : (
+                      <div style={{ width: 56, height: 56, borderRadius: 8, background: "rgba(255,255,255,0.05)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 20, color: "#555", flexShrink: 0 }}>
+                        {competitor.slice(0, 1)}
+                      </div>
+                    )}
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ display: "flex", gap: 8, marginBottom: 4, alignItems: "center" }}>
+                        <Badge color={STATUS_COLOR[c.status]}>{c.status === "pending" ? "Ожидает" : c.status === "approved" ? "Одобрен" : "Отклонён"}</Badge>
+                        <span style={{ fontSize: 12, fontWeight: 700, color: "#DDD" }}>{competitor}</span>
+                      </div>
+                      {raw.ai_hook && <div style={{ fontSize: 11, color: "#C490D1", marginBottom: 3 }}>Хук: {raw.ai_hook.slice(0, 100)}</div>}
+                      {raw.ai_offer && <div style={{ fontSize: 11, color: "#888" }}>Оффер: {raw.ai_offer.slice(0, 120)}</div>}
                     </div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#DDD", marginBottom: 4 }}>{c.title}</div>
-                    {c.description && <div style={{ fontSize: 12, color: "#777", lineHeight: 1.6 }}>{c.description.slice(0, 200)}{c.description.length > 200 ? "…" : ""}</div>}
+                    <div style={{ display: "flex", gap: 5, flexShrink: 0 }} onClick={e => e.stopPropagation()}>
+                      {c.status !== "approved" && <Button size="sm" variant="primary" onClick={() => quickStatus(c.id, "approved")}>✓</Button>}
+                      {c.status !== "rejected" && <Button size="sm" onClick={() => quickStatus(c.id, "rejected")}>✕</Button>}
+                    </div>
                   </div>
-                  <div style={{ display: "flex", flexDirection: "column", gap: 5, flexShrink: 0 }}>
-                    {c.status !== "approved" && <Button size="sm" variant="primary" onClick={() => quickStatus(c.id, "approved")}>✓</Button>}
-                    {c.status !== "rejected" && <Button size="sm" onClick={() => quickStatus(c.id, "rejected")}>✕</Button>}
-                    {c.status !== "pending" && <Button size="sm" onClick={() => quickStatus(c.id, "pending")} style={{ opacity: 0.5 }}>↺</Button>}
-                    <Button size="sm" onClick={() => setModal({ open: true, editing: c })}>✏</Button>
-                  </div>
-                </div>
-              </Card>
-            ))}
+                </Card>
+              );
+            })}
           </div>
         )
       )}
 
-      <Modal open={modal.open} onClose={() => setModal({ open: false })} title={modal.editing ? "Редактировать идею" : "Новая идея конкурента"}>
+      {/* Detail modal */}
+      <Modal
+        open={!!detailConcept}
+        onClose={() => setDetailConcept(null)}
+        title={detailConcept?.rawData?.page_name ?? detailConcept?.title ?? "Креатив"}
+      >
+        {detailConcept && (
+          <CreativeDetailModal
+            concept={detailConcept}
+            onClose={() => setDetailConcept(null)}
+            onStatusChange={quickStatus}
+          />
+        )}
+      </Modal>
+
+      <Modal open={modal.open} onClose={() => setModal({ open: false })} title={modal.editing ? "Редактировать" : "Новая идея"}>
         <ConceptForm initial={modal.editing} onSave={handleSave} onCancel={() => setModal({ open: false })} />
       </Modal>
 
@@ -612,7 +710,7 @@ export default function CompetitorsPage() {
         <SheetsImportModal onClose={() => setSheetsModal(false)} onImported={reload} />
       </Modal>
 
-      <Modal open={n8nModal} onClose={() => setN8nModal(false)} title="🔗 Автоматизация через n8n + Apify">
+      <Modal open={n8nModal} onClose={() => setN8nModal(false)} title="🔗 n8n автоматизация">
         <N8nGuideModal onClose={() => setN8nModal(false)} />
       </Modal>
     </div>
