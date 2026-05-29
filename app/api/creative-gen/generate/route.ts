@@ -8,6 +8,7 @@ import {
   DEFAULT_VIDEO_MODEL,
   TEXT_TO_IMAGE_MODELS,
 } from "@/lib/higgsfield-models";
+import { getBusiness } from "@/lib/brief";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -67,7 +68,7 @@ async function generatePromptWithClaude(brief: Record<string, unknown> & { perso
     max_tokens: 600,
     messages: [{
       role: "user",
-      content: `${instruction}\n\nBrief:\n${briefDesc}\n\nProduct: SternMeister — accounting courses for Russian-speaking immigrants in Germany.`,
+      content: `${instruction}\n\nBrief:\n${briefDesc}\n\nProduct: ${getBusiness().name} — ${getBusiness().product}.`,
     }],
   });
 

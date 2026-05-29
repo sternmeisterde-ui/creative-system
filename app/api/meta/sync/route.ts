@@ -1,11 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
+import { getMetaAccountsMap } from "@/lib/brief";
 
 const TOKEN = process.env.META_ACCESS_TOKEN!;
-const ACCOUNTS = {
-  com: process.env.META_AD_ACCOUNT_ID_COM!,
-  gov: process.env.META_AD_ACCOUNT_ID_GOV!,
-};
+// flows + ad accounts из brief.config.ts (per-flow env-имя), напр. { com: 'act_xxx', gov: 'act_yyy' }
+const ACCOUNTS = getMetaAccountsMap();
 
 const FIELDS = [
   "ad_id", "ad_name", "adset_id", "adset_name", "campaign_id", "campaign_name",

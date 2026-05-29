@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 export const maxDuration = 120;
 import { createServiceClient } from "@/lib/supabase";
+import { getAiContext, getBusiness } from "@/lib/brief";
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
@@ -26,7 +27,9 @@ export async function POST() {
     return `--- ${label} #${i + 1} ${files} ---\n${a.analysis}`;
   }).join("\n\n");
 
-  const prompt = `Ты эксперт по рекламным креативам для SternMeister — онлайн-курсы бухгалтерии для русскоязычных иммигрантов в Германии.
+  const prompt = `Ты эксперт по рекламным креативам для ${getBusiness().name}.
+
+${getAiContext()}
 
 Ниже собраны ${analyses.length} анализов сравнений виннеров и лузеров, сделанных ранее:
 

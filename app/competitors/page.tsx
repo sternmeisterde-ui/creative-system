@@ -2,6 +2,7 @@
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase";
 import { Card, PageHeader, Button, Badge, Modal, Label, Empty } from "@/components/ui";
+import { hookStore, bodyStore, angleStore, personaStore } from "@/lib/store";
 
 type ConceptType = "hook" | "angle" | "persona" | "body" | "format" | "other";
 type ConceptStatus = "pending" | "approved" | "rejected";
@@ -32,11 +33,28 @@ const STATUS_COLOR: Record<ConceptStatus, string> = {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+function getMediaType(raw: Record<string, string>): "video" | "image" | "none" {
+  if (raw.type === "video") return "video";
+  if (raw.type === "image" || raw.type === "static") return "image";
+  const url = raw.drive_image_url ?? raw.original_image_url ?? raw.image_url ?? "";
+  if (url.match(/\.(mp4|mov|webm|avi|mkv)(\?|$)/i)) return "video";
+  if (url.match(/\.(jpg|jpeg|png|gif|webp|bmp)(\?|$)/i)) return "image";
+  if (raw.video_url ?? raw.video_hd_url ?? raw.video_sd_url) return "video";
+  if (url) return "image";
+  return "none";
+}
+
 function getImageUrl(raw: Record<string, string>): string {
+  if (getMediaType(raw) !== "video") {
+    return raw.drive_image_url ?? raw.original_image_url ?? raw.image_url ?? raw.snapshot_url ?? raw.thumbnail_url ?? raw.creative_url ?? "";
+  }
   return raw.image_url ?? raw.snapshot_url ?? raw.thumbnail_url ?? raw.creative_url ?? "";
 }
 
 function getVideoUrl(raw: Record<string, string>): string {
+  if (getMediaType(raw) === "video") {
+    return raw.drive_image_url ?? raw.original_image_url ?? raw.video_url ?? raw.video_hd_url ?? raw.video_sd_url ?? "";
+  }
   return raw.video_url ?? raw.video_hd_url ?? raw.video_sd_url ?? "";
 }
 
@@ -65,6 +83,7 @@ function CreativeDetailModal({ concept, onClose, onStatusChange }: {
   onClose: () => void;
   onStatusChange: (id: string, status: ConceptStatus) => void;
 }) {
+  const [mediaError, setMediaError] = useState(false);
   const raw = concept.rawData ?? {};
   const imageUrl = getImageUrl(raw);
   const videoUrl = getVideoUrl(raw);
@@ -100,14 +119,26 @@ function CreativeDetailModal({ concept, onClose, onStatusChange }: {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: videoUrl || imageUrl ? "280px 1fr" : "1fr", gap: 20, overflowY: "auto" }}>
+      <div style={{ display: "grid", gridTemplateColumns: (videoUrl || imageUrl || adUrl) ? "280px 1fr" : "1fr", gap: 20, overflowY: "auto" }}>
         {/* Creative preview */}
-        {(videoUrl || imageUrl) && (
+        {(videoUrl || imageUrl || adUrl) && (
           <div style={{ flexShrink: 0 }}>
-            {videoUrl ? (
+            {(!videoUrl && !imageUrl) || mediaError ? (
+              <div style={{ width: "100%", borderRadius: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 10, padding: "30px 16px", minHeight: 180 }}>
+                <div style={{ fontSize: 28 }}>🎬</div>
+                <div style={{ fontSize: 11, color: "#555", textAlign: "center" }}>Медиа недоступно напрямую</div>
+                {adUrl && (
+                  <a href={adUrl} target="_blank" rel="noreferrer"
+                    style={{ fontSize: 11, color: "#48B8D0", textDecoration: "none", border: "1px solid rgba(72,184,208,0.3)", borderRadius: 6, padding: "6px 14px" }}>
+                    Открыть в FB Ads Library →
+                  </a>
+                )}
+              </div>
+            ) : videoUrl ? (
               <video
                 src={videoUrl}
                 controls
+                onError={() => setMediaError(true)}
                 style={{ width: "100%", borderRadius: 10, background: "#111", maxHeight: 400, objectFit: "contain" }}
               />
             ) : (
@@ -115,10 +146,11 @@ function CreativeDetailModal({ concept, onClose, onStatusChange }: {
               <img
                 src={imageUrl}
                 alt={competitor}
+                onError={() => setMediaError(true)}
                 style={{ width: "100%", borderRadius: 10, objectFit: "cover", maxHeight: 400 }}
               />
             )}
-            {raw.ad_archive_id && (
+            {!mediaError && raw.ad_archive_id && (
               <div style={{ fontSize: 10, color: "#444", marginTop: 6, textAlign: "center" }}>
                 ID: {raw.ad_archive_id}
               </div>
@@ -146,7 +178,7 @@ function CreativeDetailModal({ concept, onClose, onStatusChange }: {
           {/* Any extra raw fields not in the standard list */}
           {Object.entries(raw).filter(([k, v]) =>
             v && !ANALYSIS_SECTIONS.map(s => s.key).includes(k) &&
-            !["page_name", "ad_archive_id", "image_url", "video_url", "snapshot_url", "thumbnail_url", "ad_url", "link_url", "video_hd_url", "video_sd_url", "creative_url"].includes(k)
+            !["page_name", "ad_archive_id", "type", "status", "image_url", "video_url", "snapshot_url", "thumbnail_url", "ad_url", "link_url", "video_hd_url", "video_sd_url", "creative_url", "drive_image_url", "original_image_url"].includes(k)
           ).map(([k, v]) => (
             <div key={k}>
               <div style={{ fontSize: 10, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: 1, marginBottom: 4 }}>{k}</div>
@@ -162,11 +194,11 @@ function CreativeDetailModal({ concept, onClose, onStatusChange }: {
 // ── Table view ────────────────────────────────────────────────────────────────
 
 const TABLE_COLS: { key: string; label: string; width: number }[] = [
-  { key: "ai_hook",       label: "Хук",        width: 220 },
-  { key: "ai_offer",      label: "Оффер",      width: 180 },
-  { key: "ai_utp",        label: "УТП",        width: 160 },
-  { key: "ai_cta",        label: "CTA",        width: 130 },
-  { key: "ai_psychology", label: "Психология", width: 150 },
+  { key: "ai_hook",         label: "Хук",        width: 220 },
+  { key: "ai_offer",        label: "Оффер",      width: 180 },
+  { key: "ai_utp",          label: "УТП",        width: 160 },
+  { key: "ai_cta",          label: "CTA",        width: 130 },
+  { key: "ai_psychology",   label: "Психология", width: 150 },
 ];
 
 function CompetitorTable({ concepts, onRowClick, onStatusChange }: {
@@ -174,7 +206,13 @@ function CompetitorTable({ concepts, onRowClick, onStatusChange }: {
   onRowClick: (c: Concept) => void;
   onStatusChange: (id: string, status: ConceptStatus) => void;
 }) {
-  const rows = concepts.filter(c => c.rawData);
+  const rows = concepts
+    .filter(c => c.rawData)
+    .sort((a, b) => {
+      const ra = parseInt(a.rawData?.eu_total_reach ?? "0", 10) || 0;
+      const rb = parseInt(b.rawData?.eu_total_reach ?? "0", 10) || 0;
+      return rb - ra;
+    });
 
   if (rows.length === 0) {
     return (
@@ -191,6 +229,7 @@ function CompetitorTable({ concepts, onRowClick, onStatusChange }: {
           <tr style={{ background: "rgba(255,255,255,0.03)", borderBottom: "1px solid rgba(255,255,255,0.08)" }}>
             <th style={{ padding: "10px 10px", width: 48, borderRight: "1px solid rgba(255,255,255,0.05)" }} />
             <th style={{ padding: "10px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#666", textTransform: "uppercase", letterSpacing: 0.8, borderRight: "1px solid rgba(255,255,255,0.05)", width: 140 }}>Конкурент</th>
+            <th style={{ padding: "10px 10px", textAlign: "right", fontSize: 10, fontWeight: 700, color: "#48B8D0", textTransform: "uppercase", letterSpacing: 0.8, borderRight: "1px solid rgba(255,255,255,0.05)", width: 90 }}>Охват ↓</th>
             {TABLE_COLS.map(col => (
               <th key={col.key} style={{ padding: "10px 10px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#666", textTransform: "uppercase", letterSpacing: 0.8, borderRight: "1px solid rgba(255,255,255,0.05)", width: col.width }}>
                 {col.label}
@@ -221,7 +260,11 @@ function CompetitorTable({ concepts, onRowClick, onStatusChange }: {
               >
                 {/* Thumbnail */}
                 <td style={{ padding: "6px 8px", borderRight: "1px solid rgba(255,255,255,0.05)", width: 48 }} onClick={e => e.stopPropagation()}>
-                  {imageUrl ? (
+                  {getMediaType(raw) === "video" ? (
+                    <div style={{ width: 36, height: 36, borderRadius: 6, background: "rgba(255,255,255,0.06)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, color: "#48B8D0" }}>
+                      ▶
+                    </div>
+                  ) : imageUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={imageUrl} alt="" style={{ width: 36, height: 36, borderRadius: 6, objectFit: "cover", display: "block" }} />
                   ) : (
@@ -238,6 +281,17 @@ function CompetitorTable({ concepts, onRowClick, onStatusChange }: {
                     <a href={getAdUrl(raw)} target="_blank" rel="noreferrer"
                       onClick={e => e.stopPropagation()}
                       style={{ fontSize: 10, color: "#48B8D0", textDecoration: "none" }}>FB Ads →</a>
+                  )}
+                </td>
+
+                {/* Reach */}
+                <td style={{ padding: "8px 10px", borderRight: "1px solid rgba(255,255,255,0.05)", width: 90, verticalAlign: "top", textAlign: "right" }}>
+                  {raw.eu_total_reach ? (
+                    <div style={{ fontSize: 12, fontWeight: 700, color: "#48B8D0" }}>
+                      {parseInt(raw.eu_total_reach, 10).toLocaleString("de-DE")}
+                    </div>
+                  ) : (
+                    <div style={{ fontSize: 11, color: "#333" }}>—</div>
                   )}
                 </td>
 
@@ -270,6 +324,155 @@ function CompetitorTable({ concepts, onRowClick, onStatusChange }: {
           })}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+// ── Insights modal ────────────────────────────────────────────────────────────
+
+const INSIGHT_PARAMS: { key: "hook" | "body" | "angle" | "persona"; label: string; color: string }[] = [
+  { key: "hook",    label: "Хук",    color: "#C490D1" },
+  { key: "angle",   label: "Энгл",   color: "#FF8B5A" },
+  { key: "persona", label: "Персона", color: "#48B8D0" },
+  { key: "body",    label: "Боди",   color: "#6EC8A0" },
+];
+
+const INSIGHT_COLORS: Record<string, string> = {
+  hook: "#C490D1", angle: "#FF8B5A", persona: "#48B8D0", body: "#6EC8A0",
+};
+
+async function saveInsightToLibrary(key: "hook" | "angle" | "persona" | "body", name: string, text: string): Promise<void> {
+  const description = `[Из анализа конкурентов]\n\n${text}`;
+  if (key === "hook") {
+    await hookStore.save({ name, template: "", description, examples: [], color: INSIGHT_COLORS.hook, flow: "com" });
+  } else if (key === "body") {
+    await bodyStore.save({ name, template: "", description, examples: [], color: INSIGHT_COLORS.body, flow: "com" });
+  } else if (key === "angle") {
+    await angleStore.save({ name, template: "", description, examples: [], color: INSIGHT_COLORS.angle, flow: "com" });
+  } else if (key === "persona") {
+    await personaStore.save({ name, short: "Конкурент", description, pointA: "", pointB: "", pains: [], triggers: [], color: INSIGHT_COLORS.persona, flow: "com" });
+  }
+}
+
+function InsightSaveForm({ paramKey, text, onDone }: { paramKey: "hook" | "angle" | "persona" | "body"; text: string; onDone: () => void }) {
+  const [name, setName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [err, setErr] = useState("");
+
+  const handleSave = async () => {
+    if (!name.trim()) return;
+    setSaving(true); setErr("");
+    try {
+      await saveInsightToLibrary(paramKey, name.trim(), text);
+      setSaved(true);
+      setTimeout(onDone, 1200);
+    } catch (e) { setErr(String(e)); } finally { setSaving(false); }
+  };
+
+  if (saved) {
+    return <div style={{ fontSize: 11, color: "#6EC8A0", padding: "8px 0" }}>Сохранено в библиотеку</div>;
+  }
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: "12px 14px" }}>
+      <div style={{ fontSize: 11, color: "#888" }}>Название для библиотеки:</div>
+      <div style={{ display: "flex", gap: 8 }}>
+        <input
+          value={name}
+          onChange={e => setName(e.target.value)}
+          placeholder="Например: Хук через страх потери"
+          style={{ flex: 1, fontSize: 12, background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: 6, padding: "6px 10px", color: "#EEE" }}
+          onKeyDown={e => e.key === "Enter" && handleSave()}
+          autoFocus
+        />
+        <Button variant="primary" onClick={handleSave} disabled={saving || !name.trim()}>
+          {saving ? "..." : "Сохранить"}
+        </Button>
+        <Button onClick={onDone}>Отмена</Button>
+      </div>
+      {err && <div style={{ fontSize: 11, color: "#D96B6B" }}>{err}</div>}
+    </div>
+  );
+}
+
+function InsightsModal({ concepts, onClose }: { concepts: Concept[]; onClose: () => void }) {
+  const [loading, setLoading] = useState(false);
+  const [insights, setInsights] = useState<{ hook: string; body: string; angle: string; persona: string } | null>(null);
+  const [error, setError] = useState("");
+  const [savingKey, setSavingKey] = useState<"hook" | "angle" | "persona" | "body" | null>(null);
+
+  const generate = async () => {
+    setLoading(true); setError(""); setInsights(null); setSavingKey(null);
+    try {
+      const res = await fetch("/api/ai/competitor-insights", { method: "POST" });
+      let data: { ok?: boolean; error?: string; insights?: { hook: string; body: string; angle: string; persona: string } };
+      try {
+        data = await res.json();
+      } catch {
+        setError("Таймаут — попробуй ещё раз.");
+        return;
+      }
+      if (!data.ok) { setError(data.error ?? "Ошибка"); return; }
+      setInsights(data.insights!);
+    } catch (e) { setError(String(e)); } finally { setLoading(false); }
+  };
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+      {!insights && !loading && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ fontSize: 12, color: "#888", lineHeight: 1.7 }}>
+            Claude проанализирует топ-20 объявлений конкурентов по охвату и выдаст конкретные паттерны для хуков, боди, энглов и персон — которые стоит тестировать в наших креативах.
+          </div>
+          <Button variant="primary" onClick={generate}>Сгенерировать инсайты</Button>
+        </div>
+      )}
+
+      {loading && (
+        <div style={{ textAlign: "center", padding: "40px 20px" }}>
+          <div style={{ fontSize: 13, color: "#888" }}>Анализирую {Math.min(concepts.filter(c => c.rawData).length, 20)} объявлений...</div>
+          <div style={{ fontSize: 11, color: "#555", marginTop: 8 }}>~20-30 секунд</div>
+        </div>
+      )}
+
+      {error && (
+        <div style={{ fontSize: 12, color: "#D96B6B", background: "rgba(217,107,107,0.08)", border: "1px solid rgba(217,107,107,0.2)", borderRadius: 8, padding: "10px 14px" }}>{error}</div>
+      )}
+
+      {insights && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 20, maxHeight: "65vh", overflowY: "auto" }}>
+          {INSIGHT_PARAMS.map(({ key, label, color }) => (
+            <div key={key}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 10 }}>
+                <div style={{ fontSize: 11, fontWeight: 800, color, textTransform: "uppercase", letterSpacing: 1.2 }}>{label}</div>
+                <div style={{ fontSize: 10, color: "#555", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 4, padding: "2px 7px" }}>из анализа конкурентов</div>
+                {savingKey !== key && (
+                  <button
+                    onClick={() => setSavingKey(key)}
+                    style={{ marginLeft: "auto", fontSize: 11, color: color, background: "transparent", border: `1px solid ${color}40`, borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}
+                  >
+                    Сохранить в библиотеку
+                  </button>
+                )}
+              </div>
+              <div style={{ fontSize: 13, color: "#CCC", lineHeight: 1.8, whiteSpace: "pre-wrap", background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "14px 16px" }}>
+                {insights[key]}
+              </div>
+              {savingKey === key && (
+                <InsightSaveForm
+                  paramKey={key}
+                  text={insights[key]}
+                  onDone={() => setSavingKey(null)}
+                />
+              )}
+            </div>
+          ))}
+          <Button onClick={generate} style={{ alignSelf: "flex-end" }}>Обновить</Button>
+        </div>
+      )}
+
+      {!loading && <div style={{ display: "flex", justifyContent: "flex-end" }}><Button onClick={onClose}>Закрыть</Button></div>}
     </div>
   );
 }
@@ -495,6 +698,7 @@ export default function CompetitorsPage() {
   const [hypothesis, setHypothesis] = useState("");
   const [generating, setGenerating] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("table");
+  const [insightsModal, setInsightsModal] = useState(false);
 
   const reload = useCallback(async () => {
     const { data } = await supabase
@@ -545,7 +749,11 @@ export default function CompetitorsPage() {
     finally { setGenerating(false); }
   };
 
+  const EXCLUDED_COMPETITORS = ["booking.com", "octopus energy", "alibaba.com"];
+
   const filtered = concepts.filter(c => {
+    const pageName = (c.rawData?.page_name ?? c.title).toLowerCase();
+    if (EXCLUDED_COMPETITORS.some(e => pageName.includes(e))) return false;
     if (filter !== "all" && c.status !== filter) return false;
     if (search) {
       const q = search.toLowerCase();
@@ -568,10 +776,10 @@ export default function CompetitorsPage() {
         subtitle="Анализ рекламы конкурентов"
         action={
           <div style={{ display: "flex", gap: 8 }}>
-            {counts.approved > 0 && (
-              <Button onClick={handleGenerateHypothesis} disabled={generating}
-                style={{ background: "rgba(232,170,66,0.12)", border: "1px solid rgba(232,170,66,0.3)", color: generating ? "#666" : "#E8AA42" }}>
-                {generating ? "⏳..." : `✨ Гипотезы (${counts.approved})`}
+            {concepts.filter(c => c.rawData).length > 0 && (
+              <Button onClick={() => setInsightsModal(true)}
+                style={{ background: "rgba(196,144,209,0.1)", border: "1px solid rgba(196,144,209,0.3)", color: "#C490D1" }}>
+                💡 Инсайты по параметрам
               </Button>
             )}
             <Button onClick={() => setSheetsModal(true)} style={{ border: "1px solid rgba(110,200,160,0.3)", color: "#6EC8A0", background: "rgba(110,200,160,0.08)" }}>
@@ -712,6 +920,10 @@ export default function CompetitorsPage() {
 
       <Modal open={n8nModal} onClose={() => setN8nModal(false)} title="🔗 n8n автоматизация">
         <N8nGuideModal onClose={() => setN8nModal(false)} />
+      </Modal>
+
+      <Modal open={insightsModal} onClose={() => setInsightsModal(false)} title="💡 Инсайты по параметрам">
+        <InsightsModal concepts={concepts.filter(c => c.rawData)} onClose={() => setInsightsModal(false)} />
       </Modal>
     </div>
   );

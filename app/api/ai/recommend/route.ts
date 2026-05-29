@@ -2,6 +2,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
 import { parseAdNameWithMapping, type AdNameMapping } from "@/lib/naming";
+import { getAiContext, getBusiness } from "@/lib/brief";
+import { getSettings } from "@/lib/settings";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -12,6 +14,7 @@ type ParamStat = {
   cpql: number | null;
   winRate: number | null;
   winnerCount: number;
+  fakeWinnerCount: number;
   loserCount: number;
   adCount: number;
   spend: number;
@@ -37,9 +40,9 @@ async function getParamStats(flow?: string): Promise<ParamStat[]> {
     bodyCode: r.body_code, angleCode: r.angle_code, format: r.format, flow: r.flow,
   }));
 
-  const agg: Record<string, { code: string; paramType: string; spend: number; impressions: number; leads: number; qualLeads: number; adCount: number; winnerCount: number; loserCount: number }> = {};
+  const agg: Record<string, { code: string; paramType: string; spend: number; impressions: number; leads: number; qualLeads: number; adCount: number; winnerCount: number; fakeWinnerCount: number; loserCount: number }> = {};
   const ensure = (code: string, type: string) => {
-    if (!agg[code]) agg[code] = { code, paramType: type, spend: 0, impressions: 0, leads: 0, qualLeads: 0, adCount: 0, winnerCount: 0, loserCount: 0 };
+    if (!agg[code]) agg[code] = { code, paramType: type, spend: 0, impressions: 0, leads: 0, qualLeads: 0, adCount: 0, winnerCount: 0, fakeWinnerCount: 0, loserCount: 0 };
   };
 
   for (const row of (ads ?? [])) {
@@ -62,13 +65,17 @@ async function getParamStats(flow?: string): Promise<ParamStat[]> {
       agg[code].leads += leads;
       agg[code].qualLeads += qualLeads;
       agg[code].adCount++;
-      if (status === "winner") agg[code].winnerCount++;
-      if (status === "loser") agg[code].loserCount++;
+      if (status === "winner")      agg[code].winnerCount++;
+      if (status === "fake_winner") agg[code].fakeWinnerCount++;
+      if (status === "loser")       agg[code].loserCount++;
     }
   }
 
   return Object.values(agg).map(a => {
-    const decided = a.winnerCount + a.loserCount;
+    // winRate: настоящие виннеры / (winners + fake_winners + losers).
+    // fake_winners в знаменателе, но не в числителе — они выглядят как победа,
+    // но реально не приносят результат, поэтому ranking за них не повышается.
+    const decided = a.winnerCount + a.fakeWinnerCount + a.loserCount;
     return {
       code: a.code, paramType: a.paramType,
       spend: Math.round(a.spend),
@@ -76,7 +83,7 @@ async function getParamStats(flow?: string): Promise<ParamStat[]> {
       cpl: a.leads > 0 ? Math.round((a.spend / a.leads) * 10) / 10 : null,
       cpql: a.qualLeads > 0 ? Math.round((a.spend / a.qualLeads) * 10) / 10 : null,
       winRate: decided > 0 ? Math.round((a.winnerCount / decided) * 100) : null,
-      winnerCount: a.winnerCount, loserCount: a.loserCount, adCount: a.adCount,
+      winnerCount: a.winnerCount, fakeWinnerCount: a.fakeWinnerCount, loserCount: a.loserCount, adCount: a.adCount,
     };
   });
 }
@@ -88,7 +95,7 @@ function formatStats(stats: ParamStat[], type: string): string {
     const parts = [`  ${s.code}:`];
     if (s.cpl != null) parts.push(`CPL €${s.cpl}`);
     if (s.cpql != null) parts.push(`CPQL €${s.cpql}`);
-    if (s.winRate != null) parts.push(`winRate ${s.winRate}% (${s.winnerCount}W/${s.loserCount}L из ${s.adCount})`);
+    if (s.winRate != null) parts.push(`winRate ${s.winRate}% (${s.winnerCount}W/${s.fakeWinnerCount}FW/${s.loserCount}L из ${s.adCount})`);
     else parts.push(`${s.adCount} объявл., €${s.spend} спенд, не решено`);
     return parts.join(" | ");
   }).join("\n");
@@ -107,10 +114,15 @@ export async function POST(req: NextRequest) {
     for (const b of bodies) if (b.code) codeToId[b.code] = b.id;
     for (const a of angles) if (a.code) codeToId[a.code] = a.id;
 
-    const prompt = `Ты — аналитик рекламных креативов Meta Ads для SternMeister (курсы бухгалтерии для иммигрантов в Германии).
+    const settings = await getSettings();
+    const business = getBusiness();
+    const prompt = `Ты — аналитик рекламных креативов Meta Ads для ${business.name}.
+
+${getAiContext()}
+
 Цель: выбрать оптимальный набор параметров (до 3 по каждому типу) для следующего теста.
 Поток: ${flow?.toUpperCase() ?? "COM"}
-Цели: CPL ≤ €20, CPQL ≤ €28, порог значимости 8000 показов.
+Цели: CPL ≤ €${settings.cplTarget}, CPQL ≤ €${settings.cpqlTarget}, порог значимости ${settings.minImpressionsForStatus} показов.
 
 СТАТИСТИКА ПО ПАРАМЕТРАМ (из реальных данных Meta):
 
@@ -132,12 +144,19 @@ ${formatStats(paramStats, "angle")}
 Боди: ${bodies.map((b: { id: string; name: string; code?: string }) => `${b.code ?? "?"} = ${b.id} (${b.name})`).join(", ")}
 Энглы: ${angles.map((a: { id: string; name: string; code?: string }) => `${a.code ?? "?"} = ${a.id} (${a.name})`).join(", ")}
 
+ВАЖНО: в статистике формат счёта winRate Y% (XW/ZFW/QL из N) —
+W = настоящие виннеры, FW = fake_winners (прошли KPI по CPL/CPQL, но имеют red flags
+внутри воронки или экономики — реально это убыточный успех), L = лузеры.
+**FW считаются за неудачу** — их не повторяем.
+
 СТРАТЕГИЯ выбора:
 1. Если у параметра winRate > 30% и CPL ≤ €25 — включай в тест (проверено, работает).
-2. Если у параметра мало данных (< 3 объявлений, impressions < 5000) — включай 1-2 таких (нужно дотестировать).
-3. Если у параметра winRate = 0% и CPL > €35 после 8000+ показов — НЕ включай (проигрышный паттерн).
-4. Если параметра нет в статистике вообще — включи 1 такой (не тестировался, может быть виннером).
-5. Выбирай разнообразие: не все из одной категории "проверено хорошо" — оставляй место для открытий.
+2. Если у параметра много FW (например, FW ≥ W и FW ≥ 3) — НЕ включай или включай c осторожностью:
+   параметр маскируется под успех, но не приносит реального результата.
+3. Если у параметра мало данных (< 3 объявлений, impressions < 5000) — включай 1-2 таких (нужно дотестировать).
+4. Если у параметра winRate = 0% и CPL > €35 после 8000+ показов — НЕ включай (проигрышный паттерн).
+5. Если параметра нет в статистике вообще — включи 1 такой (не тестировался, может быть виннером).
+6. Выбирай разнообразие: не все из одной категории "проверено хорошо" — оставляй место для открытий.
 
 Ответь строго в JSON без комментариев:
 {

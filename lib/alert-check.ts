@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase";
+import { getSettings } from "@/lib/settings";
 
 const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TG_CHAT  = process.env.TELEGRAM_CHAT_ID;
@@ -14,6 +15,7 @@ async function sendTelegram(text: string) {
 
 export async function runAlertCheck(): Promise<{ created: number; dismissed: number }> {
   const supabase = createServiceClient();
+  const settings = await getSettings();
 
   // Get last 2 distinct dates from meta_ads
   const { data: datesRows } = await supabase
@@ -39,10 +41,16 @@ export async function runAlertCheck(): Promise<{ created: number; dismissed: num
 
   const { data: perfRows } = await supabase
     .from("creative_performance")
-    .select("ad_id, ad_name, flow, cpl, cpql, leads, impressions, auto_status")
+    .select("ad_id, ad_name, flow, cpl, cpql, leads, impressions, spend, roas, cr_lead_to_qual, lifespan_days, age_days, auto_status, risk_signals")
     .in("ad_id", activeIds);
 
   const loserIds = new Set((perfRows ?? []).filter(r => r.auto_status === "loser").map(r => r.ad_id as string));
+  // Fake winners qualifying for alert: порог из app_settings (по умолчанию €50).
+  const FAKE_WINNER_SPEND_FLOOR = settings.fakeWinnerAlertSpendFloor;
+  const fakeWinnerRows = (perfRows ?? []).filter(
+    r => r.auto_status === "fake_winner" && (r.spend as number ?? 0) >= FAKE_WINNER_SPEND_FLOOR
+  );
+  const fakeWinnerIds = new Set(fakeWinnerRows.map(r => r.ad_id as string));
 
   // Auto-dismiss alerts for ads that are no longer losers
   const { data: openAlerts } = await supabase
@@ -57,6 +65,20 @@ export async function runAlertCheck(): Promise<{ created: number; dismissed: num
 
   if (staleIds.length > 0) {
     await supabase.from("creative_alerts").update({ dismissed: true }).in("id", staleIds);
+  }
+
+  // Auto-dismiss fake_winner alerts для объявлений, которые больше не fake_winner
+  // (либо стали виннером, либо перешли в loser/testing — в любом случае контекст другой)
+  const { data: openFakeAlerts } = await supabase
+    .from("creative_alerts")
+    .select("id, ad_id")
+    .eq("alert_type", "fake_winner_detected")
+    .eq("dismissed", false);
+  const staleFakeIds = (openFakeAlerts ?? [])
+    .filter(a => !fakeWinnerIds.has(a.ad_id as string))
+    .map(a => a.id as string);
+  if (staleFakeIds.length > 0) {
+    await supabase.from("creative_alerts").update({ dismissed: true }).in("id", staleFakeIds);
   }
 
   // Create new alerts for losers
@@ -103,6 +125,51 @@ export async function runAlertCheck(): Promise<{ created: number; dismissed: num
     created++;
   }
 
+  // ── Fake winner detected: прошли KPI, но имеют red flags + spend ≥ €50 ────
+  const RISK_LABEL: Record<string, string> = {
+    low_qual_cr:   "слабая Lead→Qual воронка (<60%)",
+    short_lifespan: "короткий жизненный цикл (<7 дней)",
+    low_roas_30d:  "ROAS<1 при возрасте ≥30 дней и spend≥€500",
+  };
+  for (const row of fakeWinnerRows) {
+    const { data: existing } = await supabase
+      .from("creative_alerts")
+      .select("id")
+      .eq("ad_id", row.ad_id)
+      .eq("alert_type", "fake_winner_detected")
+      .eq("dismissed", false)
+      .maybeSingle();
+    if (existing) continue;
+
+    const signals = (row.risk_signals as string[] | null) ?? [];
+    const signalsHuman = signals.map(s => RISK_LABEL[s] ?? s).join("; ");
+    const cpl  = row.cpl  as number | null;
+    const cpql = row.cpql as number | null;
+    const roas = row.roas as number | null;
+    const cr   = row.cr_lead_to_qual as number | null;
+    const spend = row.spend as number;
+
+    await supabase.from("creative_alerts").insert({
+      ad_id:      row.ad_id,
+      ad_name:    row.ad_name,
+      flow:       row.flow,
+      alert_type: "fake_winner_detected",
+      message:    `Прошёл KPI (CPL €${cpl?.toFixed(1) ?? "—"}, CPQL €${cpql?.toFixed(1) ?? "—"}), но: ${signalsHuman}. Spend €${spend.toFixed(0)}.`,
+      value:      spend,
+      threshold:  FAKE_WINNER_SPEND_FLOOR,
+    });
+
+    await sendTelegram(
+      `🟠 <b>Fake winner — KPI прошёл, но деньги в минус</b>\n\n` +
+      `📛 ${row.ad_name as string}\n` +
+      `📊 CPL €${cpl?.toFixed(1) ?? "—"} · CPQL €${cpql?.toFixed(1) ?? "—"} · CR ${cr?.toFixed(0) ?? "—"}% · ROAS ${roas?.toFixed(2) ?? "—"}\n` +
+      `💸 Spend: €${spend.toFixed(0)}\n` +
+      `⚑ Red flags: ${signalsHuman}\n\n` +
+      `Внешне выглядит как успех, по KPI зелёный — но воронка/экономика сломаны. Рассмотри стоп.`
+    );
+    created++;
+  }
+
   // Pack dying check: 2+ active losers → fire Telegram CTA once
   const PACK_DYING_THRESHOLD = 2;
   if (losers.length >= PACK_DYING_THRESHOLD) {
@@ -143,5 +210,5 @@ export async function runAlertCheck(): Promise<{ created: number; dismissed: num
       .eq("dismissed", false);
   }
 
-  return { created, dismissed: staleIds.length };
+  return { created, dismissed: staleIds.length + staleFakeIds.length };
 }

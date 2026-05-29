@@ -1,62 +1,232 @@
-# SternMeister Creative System — Claude Instructions
+# SternMeister Creative System — Claude Skill
 
-## Проект
-Next.js 16 App Router + TypeScript + Supabase. Система производства Meta Ads креативов для SternMeister (курсы бухгалтерии для русскоязычных иммигрантов в Германии).
+## Бизнес-контекст
+Продукт: курс "Бухгалтер в Германии" (SternMeister) — 7 месяцев, сертификат DEKRA, обучение на русском.
+Два потока лидов:
+- **COM** (`act_2363791534094905`) — коммерческие, платят сами. Проблемный сегмент, CPQL стабильно выше плана.
+- **GOV** (`act_721283820441329`) — Jobcenter/Bildungsgutschein, государство платит. Перевыполняют план.
+
+Creative System — внутренний инструмент производства Meta Ads креативов. Цель: сократить цикл от гипотезы до запущенного объявления, автоматизировать генерацию брифов и анализ результатов.
+
+**Деплой**: https://creative.sternmeister.de (Vercel, проект `creative-system`, org `stern-meister`)
+**Запуск локально**: `npm run dev` → http://localhost:3000
+
+---
 
 ## Стек
-- **Frontend**: Next.js 16 App Router, TypeScript, inline styles (без CSS-модулей)
-- **Backend**: Next.js API Routes (app/api/**/route.ts)
-- **БД**: Supabase (PostgreSQL) — все данные только там
-- **AI**: Anthropic SDK — claude-sonnet-4-6 для классификации, claude-opus-4-6 для брифов/сценариев
-- **Генерация**: Higgsfield API (`platform.higgsfield.ai`), auth: `hf-api-key` + `hf-secret` headers
-- **Аналитика**: Meta Marketing API v21.0 через `creative_performance` view
+- **Frontend**: Next.js 16 App Router, TypeScript, inline styles (без CSS-модулей, без Tailwind в коде)
+- **Backend**: Next.js API Routes (`app/api/**/route.ts`)
+- **БД**: Supabase (PostgreSQL) — `https://cvfmkbqowaziafghdhqm.supabase.co`
+- **AI**: Anthropic SDK — `claude-sonnet-4-6` для классификации/рекомендаций, `claude-opus-4-6` для брифов и сценариев
+- **Генерация контента**: Higgsfield API (`platform.higgsfield.ai`), auth: заголовки `hf-api-key` + `hf-secret`
+- **Аналитика**: Meta Marketing API v21.0 + Elly (Plurio) по SSE
+- **Алерты**: Telegram Bot API
+- **Цветовая палитра**: `#E8AA42` (золото), `#6EC8A0` (зелёный), `#D96B6B` (красный), `#48B8D0` (голубой), `#C490D1` (фиолетовый), `#FF8B5A` (оранжевый)
+- **Фон приложения**: `#08090D`
 
-## Ключевые правила
+---
 
-### TypeScript
-- Строгая типизация — никаких `any` без крайней необходимости
-- Async/await + try-catch для всех асинхронных операций
-- Иммутабельность: `{ ...obj, key: value }` вместо `obj.key = value`
-- Функции не длиннее 50 строк, файлы не длиннее 800 строк
-- Нет `console.log` в production коде
+## Страницы и их назначение
 
-### API Routes
-- Всегда использовать `createServiceClient()` на сервере (service role key)
-- Публичный `supabase` клиент только на клиенте (anon key)
-- Все ошибки логировать, возвращать понятные сообщения
-- Не раскрывать внутренние детали ошибок пользователю
+| Путь | Назначение |
+|------|-----------|
+| `/` | Дашборд — статус системы, метрики, быстрые действия |
+| `/library` | Библиотека параметров — CRUD персон, хуков, боди, энглов |
+| `/scenarios` | Сценарии — базовые тексты для каждого параметра |
+| `/admin` | Правила адаптации для генерации брифов |
+| `/builder` | Конструктор сессий — выбор 3×3×3×3 параметров (макс. 81 комбо) |
+| `/briefs` | Брифы — генерация через Claude, аппрув, публикация |
+| `/creatives` | Готовые крео — статус генерации Higgsfield, управление |
+| `/panel` | Live-панель Meta Ads — CPL/CPQL, алерты, статус пакета |
+| `/analytics` | Аналитика — параметры, комбинации, история, **бивариативный анализ** |
+| `/mapping` | Маппинг объявлений — ручная привязка имён к кодам параметров |
+| `/competitors` | База конкурентов — импорт из Sheets, AI-инсайты |
+| `/analyze` | Анализ креативов через Gemini Vision |
+| `/pbi` | Загрузка данных PBI (лиды, квал. лиды, выручка) |
+| `/database` | Прямой браузер Supabase таблиц |
+| `/feedback` | Обратная связь по брифам |
 
-### Безопасность
-- Никаких секретов в коде — только `process.env.*`
-- Валидация входящих данных на API routes
-- Не делать `git add .env*` никогда
+---
 
-### Стиль кода
-- Писать минимально необходимый код — не добавлять фичи "на будущее"
-- Не добавлять docstrings/комментарии к неизменённому коду
-- Prefer editing existing files over creating new ones
-- Не использовать эмодзи если пользователь не просил
+## Производственный цикл (10 шагов)
 
-### Нейминг (бизнес-логика)
-- Формат: `P{n}·H{n}·B{n}·A{n}·FORMAT·FLOW`
-- Форматы: `ugc`, `static`, `animation`, `human`
-- Потоки: `com` (коммерческий), `gov` (госники)
-- Критерии виннера: CPL ≤ €20, CPQL ≤ €28, 8000+ показов
+```
+1. Библиотека    → добавить персоны / хуки / боди / энглы
+2. Сценарии      → написать базовые тексты для каждого параметра
+3. Правила       → настроить правила адаптации в /admin
+4. Конструктор   → выбрать 3×3×3×3, создать сессию (до 81 комбо)
+5. Брифы         → сгенерировать через Claude Opus, аппрувнуть
+6. Публикация    → назначить ad names (P1-H2-B3-A4-UGC-COM)
+7. Генерация     → создать видео/статику через Higgsfield
+8. Запуск        → вручную запустить в Meta Ads Manager
+9. Мониторинг    → /panel — CPL/CPQL, алерты в Telegram
+10. Анализ       → /analytics бивариативный → новые гипотезы → шаг 4
+```
+
+---
+
+## Нейминг объявлений
+
+Формат: `P{n}-H{n}-B{n}-A{n}-FORMAT-FLOW`
+
+Пример: `P2-H1-B3-A5-UGC-COM`
+
+- **P** = Персона, **H** = Хук, **B** = Боди, **A** = Энгл
+- **FORMAT**: `UGC`, `STATIC`, `ANIMATION`, `HUMAN`, `MIXED`
+- **FLOW**: `COM` (коммерческий), `GOV` (госники)
+- **Критерии виннера**: CPL ≤ €20 + CPQL ≤ €28 + ≥8000 показов
+- Парсинг/сборка: `lib/naming.ts` → `parseAdName()`, `buildAdName()`
+- Маппинг нестандартных имён: таблица `ad_name_mapping`
+
+---
+
+## База данных (Supabase)
+
+### Основные таблицы
+| Таблица | Назначение |
+|---------|-----------|
+| `personas` | Персоны — code(P1), name, color, flow, description, pains, triggers |
+| `hooks` | Хуки — code(H1), name, color, flow, template, description, examples |
+| `bodies` | Боди — code(B1), name, color, flow, template, description, examples |
+| `angles` | Энглы — code(A1), name, color, flow, template, description, examples |
+| `constructor_sessions` | Сессии конструктора — selectedPersonas[], selectedHooks[], etc. |
+| `scenarios` | Сценарии — upsert по unique(paramType, paramId) |
+| `briefs` | Брифы — sessionId, paramIds, adaptedContent, fullBrief, status |
+| `creatives` | Готовые крео — personaId, hookId, bodyId, angleId, format, metaAdId |
+| `rules` | Правила адаптации для промтов |
+| `meta_ads` | Данные Meta API — upsert по unique(adId, date) |
+| `pbi_metrics` | Данные PBI — leads, qualLeads, revenue по adId |
+| `ad_name_mapping` | Ручной маппинг нестандартных имён объявлений |
+| `competitor_concepts` | Концепты конкурентов — source, rawData, status |
+| `creative_alerts` | Алерты — alertType, dismissed |
+| `creative_generations` | Записи генераций Higgsfield |
+
+### Ключевые views
+- `creative_performance` — объединяет `meta_ads` + `pbi_metrics`, вычисляет CPL, CPQL, `auto_status` (winner/loser/testing/unknown)
+
+### Клиенты Supabase
+- `lib/supabase.ts` → `supabase` (anon, клиент) / `createServiceClient()` (service role, сервер)
+- На API routes **всегда** использовать `createServiceClient()`
+
+---
+
+## API Routes
+
+### AI
+| Роут | Назначение |
+|------|-----------|
+| `POST /api/ai/generate-briefs` | Генерация брифов через Claude Opus (streaming) |
+| `POST /api/ai/generate-scenario` | Генерация сценария для параметра |
+| `POST /api/ai/recommend` | Рекомендации параметров |
+| `POST /api/ai/analyze-performance` | Анализ результатов через Claude |
+| `POST /api/ai/competitor-insights` | AI-инсайты по топ-20 конкурентам (параллельные запросы) |
+| `POST /api/ai/competitor-hypothesis` | Гипотезы по одобренным концептам |
+
+### Генерация (Higgsfield)
+| Роут | Назначение |
+|------|-----------|
+| `POST /api/creative-gen/generate` | Одиночная генерация (фото/видео) |
+| `GET /api/creative-gen/status` | Поллинг статуса генерации |
+| `POST /api/creative-gen/generate-scenes` | Мульти-сцена видео |
+| `POST /api/creative-gen/generate-voices` | Войсовер |
+| `POST /api/creative-gen/lipsync-scenes` | Lip-sync |
+| `POST /api/creative-gen/stitch-scenes` | Склейка сцен |
+
+### Аналитика
+| Роут | Назначение |
+|------|-----------|
+| `GET /api/analytics/params` | Агрегация по кодам параметров |
+| `GET /api/analytics/combinations` | Комбинации пар параметров |
+| `GET /api/analytics/lineage` | Генеалогия сессий |
+| `GET /api/analytics/bivariate` | **Бивариативный анализ** (split + семьи) |
+| `GET /api/analytics/pack-health` | Здоровье пакета (доля виннеров) |
+| `POST /api/analytics/early-stop` | Рекомендации по остановке |
+
+### Meta / Данные
+| Роут | Назначение |
+|------|-----------|
+| `POST /api/meta/sync` | Синхронизация данных из Meta API |
+| `POST /api/meta/pause` | Остановка объявлений через API |
+| `POST /api/pbi/upload` | Загрузка данных PBI |
+| `POST /api/pbi/elly-sync` | Синхронизация с Elly (Plurio) по SSE |
+| `GET /api/pbi/stats` | Статистика PBI |
+
+### Алерты
+- `POST /api/alerts/check` — проверка лузеров, отправка в Telegram
+- Логика: `lib/alert-check.ts`
+- Типы: `cpl_spike`, `pack_dying`, `winner_found`, `loser_detected`
+- Активное объявление = спенд ≥ €1 за последний день
+
+---
+
+## Бивариативный анализ (`/analytics` → таб "Бивариативный")
+
+Метод: split-test на наблюдательных данных.
+- **X** = бинарный признак (код параметра, format, flow)
+- **Y** = blended CPL = SUM(spend)/SUM(leads) по группе
+- **Ratio** = CPL(X=1) / CPL(X=0)
+- **Вердикт**: `< 0.75` → HELPS · `> 1.33` → HURTS · иначе → NEUTRAL
+- Минимум 3 лида в каждой группе, иначе INSUFFICIENT
+
+**Слой 1 — Параметрический split**: роут `GET /api/analytics/bivariate`
+**Слой 2 — Семьи (генеалогия)**: группировка по 3 из 4 кодов, 4-й варьируется. Фильтр: спенд ≥ €20 на члена семьи.
+
+---
+
+## Интеграции
+
+### Meta Marketing API
+- Версия: v21.0
+- COM аккаунт: `act_2363791534094905`
+- GOV аккаунт: `act_721283820441329`
+- Токен: `process.env.META_ACCESS_TOKEN`
 
 ### Higgsfield API
-- Статика (`static` формат) → text-to-image модели (nano-banana и др.)
-- Видео (все остальные форматы) → text-to-video модели (kling, veo3.1 и др.)
-- Auth: два отдельных хедера `hf-api-key` и `hf-secret`
-- Модели и их body в `lib/higgsfield-models.ts`
+- Base URL: `platform.higgsfield.ai`
+- Auth: два заголовка `hf-api-key` + `hf-secret`
+- Статика (`static`) → text-to-image (nano-banana-v2 и др.)
+- Видео (все остальные) → text-to-video (kling-2.6-pro и др.)
+- Модели: `lib/higgsfield-models.ts`
 
-## Структура БД (основные таблицы)
-- `personas`, `hooks`, `bodies`, `angles` — библиотека параметров
-- `constructor_sessions` — сессии конструктора
-- `briefs` — адаптированные брифы
-- `creative_generations` — генерации Higgsfield
-- `creative_performance` — view с Meta + PBI данными
-- `competitor_concepts` — анализ конкурентов
+### Elly (Plurio) — сквозная аналитика
+- SSE-подключение через `POST /api/pbi/elly-sync`
+- Подтягивает leads, qualLeads, revenue по adId
 
-## Два рекламных аккаунта
-- COM: `act_2363791534094905` — коммерческий поток
-- GOV: `act_721283820441329` — госники (Bildungsgutschein)
+### Telegram Bot
+- Токен: `process.env.TELEGRAM_BOT_TOKEN`
+- Chat ID: `process.env.TELEGRAM_CHAT_ID`
+- Алерты: лузеры, выгорание пакета, виннеры
+
+### Конкуренты
+- Импорт из Google Sheets: `POST /api/competitors/sheets` → `POST /api/competitors/import`
+- Автоматизация: n8n + Apify → webhook `POST /api/competitors/import`
+- AI-классификация типа концепта при импорте
+
+---
+
+## Ключевые файлы
+
+| Файл | Что там |
+|------|---------|
+| `lib/types.ts` | Все доменные типы |
+| `lib/store.ts` | Data layer — CRUD обёртки над Supabase |
+| `lib/naming.ts` | Парсинг/сборка имён объявлений, автоприсвоение кодов |
+| `lib/alert-check.ts` | Логика алертов + Telegram |
+| `lib/higgsfield-models.ts` | Реестр моделей Higgsfield |
+| `lib/supabase.ts` | Supabase клиенты |
+| `components/ui.tsx` | Дизайн-система: Card, Button, Badge, Modal, PageHeader и др. |
+| `components/Sidebar.tsx` | Навигация |
+| `components/AppShell.tsx` | Лейаут |
+| `.env.local` | Все секреты (никогда не коммитить) |
+
+---
+
+## Правила кода
+
+- Строгая типизация TypeScript, никаких `any`
+- API routes: всегда `createServiceClient()` (service role)
+- Инлайн стили везде (не CSS-модули, не Tailwind классы)
+- Функции ≤ 50 строк, файлы ≤ 800 строк
+- Нет `console.log` в production
+- Не добавлять фичи "на будущее", только то что нужно сейчас
+- Prefer editing existing files over creating new ones

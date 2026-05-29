@@ -2,6 +2,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
 import type { Persona, Hook, Body, Angle, ConstructorSession, Scenario, Rule } from "@/lib/types";
 import { createServiceClient } from "@/lib/supabase";
+import { getAiContext, getBusiness } from "@/lib/brief";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -58,7 +59,10 @@ export async function POST(req: NextRequest) {
           const batch = combinations.slice(i, i + BATCH_SIZE);
 
           const isVideo = session.format !== "static";
-          const batchPrompt = `Ты — копирайтер и режиссёр Meta Ads для SternMeister (онлайн-курсы бухгалтерии для иммигрантов в Германии).
+          const batchPrompt = `Ты — копирайтер и режиссёр Meta Ads для ${getBusiness().name}.
+
+${getAiContext()}
+
 Формат объявления: ${session.format.toUpperCase()}${isVideo ? " (видео 15–30 сек)" : " (статичный баннер)"}.
 ${rulesText}${winnerContext}
 

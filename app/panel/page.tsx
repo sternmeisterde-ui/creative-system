@@ -264,6 +264,7 @@ export default function PanelPage() {
   useEffect(() => { load(); }, [flow]);
 
   const winners = rows.filter(r => r.autoStatus === "winner");
+  const fakeWinners = rows.filter(r => r.autoStatus === "fake_winner");
   const losers = rows.filter(r => r.autoStatus === "loser");
   const testing = rows.filter(r => r.autoStatus === "testing");
 
@@ -548,10 +549,11 @@ export default function PanelPage() {
       )}
 
       {/* Сводка */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(5, 1fr)", gap: 12, marginBottom: 20 }}>
         {[
           { label: "Всего креативов", value: rows.length, color: "#DDD" },
           { label: "Виннеров", value: winners.length, color: "#6EC8A0" },
+          { label: "Fake winners", value: fakeWinners.length, color: "#FF8B5A" },
           { label: "В тесте", value: testing.length, color: "#E8AA42" },
           { label: "Лузеров", value: losers.length, color: "#D96B6B" },
         ].map(s => (

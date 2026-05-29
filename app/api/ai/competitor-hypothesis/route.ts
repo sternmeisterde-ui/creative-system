@@ -1,5 +1,6 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest, NextResponse } from "next/server";
+import { getAiContext } from "@/lib/brief";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -12,9 +13,7 @@ export async function POST(req: NextRequest) {
 
   const prompt = `Ты — стратег по рекламным креативам Meta Ads. Проанализируй паттерны из рекламы конкурентов и сформулируй конкретные гипотезы для тестирования.
 
-ПРОДУКТ: SternMeister — курсы бухгалтерии для русскоязычных иммигрантов в Германии.
-АУДИТОРИЯ: Иммигранты 28–50 лет, работают не по специальности.
-ЦЕЛЬ: Запись на бесплатную консультацию.
+${getAiContext()}
 
 ОДОБРЕННЫЕ ПАТТЕРНЫ ОТ КОНКУРЕНТОВ (${concepts.length} шт.):
 ${concepts.map((c: { conceptType: string; title: string; description?: string }, i: number) => `

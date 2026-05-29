@@ -1,15 +1,12 @@
 import { NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
+import { getSettings } from "@/lib/settings";
 
 const TG_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const TG_CHAT  = process.env.TELEGRAM_CHAT_ID;
 
-// Flag if recent CPL > 2× plan (€20) at 2000+ impressions AND ad is currently active
-const EARLY_STOP_CPL  = 40;
-const MIN_IMPRESSIONS = 2000;
-// Ad is "active" if it had spend ≥ €1 on its most recent reported day
+// Не-настраиваемое: окно поиска и минимум дневного спенда для «active».
 const MIN_DAILY_SPEND = 1;
-// Look back 7 days for spend/impressions data
 const LOOKBACK_DAYS = 7;
 
 async function sendTelegram(text: string) {
@@ -47,6 +44,10 @@ interface PbiStat {
 // POST — scan and flag candidates (no auto-pause, manual decision only)
 export async function POST() {
   const supabase = createServiceClient();
+  const settings = await getSettings();
+  const EARLY_STOP_CPL = settings.earlyStopCpl;
+  const MIN_IMPRESSIONS = settings.earlyStopMinImpressions;
+  const DEAD_ZERO_SPEND_FLOOR = settings.deadZeroSpendFloor;
 
   const today = new Date();
   const lookbackDate = new Date(today.getTime() - LOOKBACK_DAYS * 864e5).toISOString().slice(0, 10);
@@ -119,11 +120,49 @@ export async function POST() {
   const flaggedAds: EarlyStopResult["ads"] = [];
 
   for (const ad of activeAds) {
-    if (ad.impressions < MIN_IMPRESSIONS) continue;
-
     const pbi = pbiByName[ad.adName.toLowerCase()];
     const leads = pbi?.leads ?? 0;
-    // If no leads data yet, can't compute CPL → skip
+
+    // ── Trigger 2: dead-zero-leads — spend≥€50 без единого лида ────────────────
+    // Срабатывает РАНЬШЕ CPL-проверки и не требует MIN_IMPRESSIONS,
+    // потому что главный сигнал тут — деньги без отдачи.
+    if (leads === 0 && ad.spend >= DEAD_ZERO_SPEND_FLOOR) {
+      const { data: existing } = await supabase
+        .from("creative_alerts")
+        .select("id")
+        .eq("ad_id", ad.adId)
+        .eq("alert_type", "dead_zero_leads")
+        .eq("dismissed", false)
+        .maybeSingle();
+
+      if (existing) { skipped++; continue; }
+
+      await supabase.from("creative_alerts").insert({
+        ad_id:      ad.adId,
+        ad_name:    ad.adName,
+        flow:       ad.flow,
+        alert_type: "dead_zero_leads",
+        message:    `Спенд €${ad.spend.toFixed(0)} за 7 дней без единого лида (PBI) при ${ad.impressions.toLocaleString()} показах — остановить`,
+        value:      ad.spend,
+        threshold:  DEAD_ZERO_SPEND_FLOOR,
+      });
+
+      await sendTelegram(
+        `🛑 <b>Объявление сжигает бюджет без лидов</b>\n\n` +
+        `📛 ${ad.adName}\n` +
+        `💸 €${ad.spend.toFixed(0)} спенд (7д) при ${ad.impressions.toLocaleString()} показах, лидов <b>0</b>\n` +
+        `📅 Последний спенд: ${ad.maxDate}\n` +
+        `Порог тревоги: €${DEAD_ZERO_SPEND_FLOOR}\n\n` +
+        `Рекомендуется остановить вручную.`
+      );
+
+      flagged++;
+      continue;
+    }
+
+    if (ad.impressions < MIN_IMPRESSIONS) continue;
+
+    // If no leads data yet (and spend below floor), can't compute CPL → skip
     if (leads === 0) continue;
 
     const cpl = ad.spend / leads;
@@ -171,6 +210,9 @@ export async function POST() {
 // GET — preview active candidates without creating alerts
 export async function GET() {
   const supabase = createServiceClient();
+  const settings = await getSettings();
+  const EARLY_STOP_CPL = settings.earlyStopCpl;
+  const MIN_IMPRESSIONS = settings.earlyStopMinImpressions;
 
   const today = new Date();
   const lookbackDate = new Date(today.getTime() - LOOKBACK_DAYS * 864e5).toISOString().slice(0, 10);

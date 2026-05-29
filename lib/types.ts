@@ -1,9 +1,18 @@
 export type Format = "ugc" | "static" | "animation" | "human" | "mixed";
-export type WinnerStatus = "winner" | "loser" | "unknown" | "testing";
+export type WinnerStatus = "winner" | "fake_winner" | "loser" | "unknown" | "testing";
+export type RiskSignal = "low_qual_cr" | "short_lifespan" | "low_roas_30d";
 export type Source = "internal" | "competitor";
 export type AdFlow = "com" | "gov";
 export type BriefStatus = "pending" | "approved" | "needs_revision";
-export type AlertType = "cpl_spike" | "ctr_drop" | "pack_dying" | "winner_found" | "loser_detected";
+export type AlertType =
+  | "cpl_spike"
+  | "ctr_drop"
+  | "pack_dying"
+  | "winner_found"
+  | "loser_detected"
+  | "early_stop"
+  | "dead_zero_leads"
+  | "fake_winner_detected";
 export type ConceptStatus = "pending" | "approved" | "rejected";
 
 export interface Persona {
@@ -162,6 +171,7 @@ export interface PbiMetric {
   leads: number;
   qualLeads: number;
   revenue: number;
+  transactions: number;
   createdAt: string;
 }
 
@@ -187,19 +197,26 @@ export interface CreativePerformance {
   leads: number;
   qualLeads: number;
   revenue: number;
+  transactions: number;
   // Расчётные
   cpl: number | null;
   cpql: number | null;
   crLeadToQual: number | null;
+  crQualToTxn: number | null;
   crClickToLead: number | null;
+  roas: number | null;
   // Авто-статус
   autoStatus: WinnerStatus;
+  riskSignals: RiskSignal[];
   // Плановые
   targetCpl: number;
   targetCpql: number;
-  // Даты
+  // Даты и жизненный цикл
   firstSeen: string;
   lastSeen: string;
+  lifespanDays: number;
+  ageDays: number;
+  isActive: boolean;
 }
 
 // ── Alerts ────────────────────────────────────────────────────────────────────

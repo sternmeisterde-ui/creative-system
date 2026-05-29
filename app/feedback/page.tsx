@@ -6,10 +6,10 @@ import { parseAdName } from "@/lib/naming";
 import { Card, PageHeader, Button, Badge, SectionTitle, Empty } from "@/components/ui";
 
 const STATUS_COLOR: Record<string, string> = {
-  winner: "#6EC8A0", loser: "#D96B6B", testing: "#E8AA42", unknown: "#555",
+  winner: "#6EC8A0", fake_winner: "#FF8B5A", loser: "#D96B6B", testing: "#E8AA42", unknown: "#555",
 };
 const STATUS_LABEL: Record<string, string> = {
-  winner: "Виннер", loser: "Лузер", testing: "Тест", unknown: "—",
+  winner: "Виннер", fake_winner: "Fake winner", loser: "Лузер", testing: "Тест", unknown: "—",
 };
 const CODE_COLOR: Record<string, string> = {
   P: "#48B8D0", H: "#C490D1", B: "#6EC8A0", A: "#FF8B5A",
@@ -170,12 +170,13 @@ export default function FeedbackPage() {
   useEffect(() => { reload(); }, [reload]);
 
   const counts = {
-    total:   rows.length,
-    winners: rows.filter(r => r.autoStatus === "winner").length,
-    losers:  rows.filter(r => r.autoStatus === "loser").length,
-    testing: rows.filter(r => r.autoStatus === "testing").length,
-    unknown: rows.filter(r => r.autoStatus === "unknown").length,
-    withCpl: rows.filter(r => r.cpl != null).length,
+    total:       rows.length,
+    winners:     rows.filter(r => r.autoStatus === "winner").length,
+    fakeWinners: rows.filter(r => r.autoStatus === "fake_winner").length,
+    losers:      rows.filter(r => r.autoStatus === "loser").length,
+    testing:     rows.filter(r => r.autoStatus === "testing").length,
+    unknown:     rows.filter(r => r.autoStatus === "unknown").length,
+    withCpl:     rows.filter(r => r.cpl != null).length,
   };
 
   const avgCpl = (() => {
@@ -240,11 +241,12 @@ export default function FeedbackPage() {
       {/* Filter tabs */}
       <div style={{ display: "flex", gap: 6, marginBottom: 20, flexWrap: "wrap" }}>
         {([
-          ["all",     `Все (${counts.total})`],
-          ["winner",  `Виннеры (${counts.winners})`],
-          ["testing", `Тест (${counts.testing})`],
-          ["loser",   `Лузеры (${counts.losers})`],
-          ["unknown", `Без данных (${counts.unknown})`],
+          ["all",         `Все (${counts.total})`],
+          ["winner",      `Виннеры (${counts.winners})`],
+          ["fake_winner", `Fake winners (${counts.fakeWinners})`],
+          ["testing",     `Тест (${counts.testing})`],
+          ["loser",       `Лузеры (${counts.losers})`],
+          ["unknown",     `Без данных (${counts.unknown})`],
         ] as const).map(([val, label]) => (
           <button key={val} onClick={() => setFilter(val)} style={{
             padding: "6px 14px", borderRadius: 8, fontSize: 11,

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
+import { getAiContext } from "@/lib/brief";
 
 export const maxDuration = 300; // 5 minutes for video processing
 
@@ -7,7 +8,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY!;
 const GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent";
 const FILES_API = "https://generativelanguage.googleapis.com/upload/v1beta/files";
 
-const CONTEXT = `Контекст: рекламные креативы для онлайн-курсов бухгалтерии SternMeister. Целевая аудитория — русскоязычные иммигранты в Германии, хотят освоить профессию бухгалтера, получить сертификат DEKRA, трудоустроиться.`;
+const CONTEXT = `Контекст: рекламные креативы.\n\n${getAiContext()}`;
 
 const SINGLE_PROMPT = `${CONTEXT}
 

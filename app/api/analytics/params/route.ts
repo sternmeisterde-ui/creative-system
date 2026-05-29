@@ -13,8 +13,9 @@ export interface ParamStat {
   cpql: number | null;     // spend / qualLeads
   adCount: number;
   winnerCount: number;
+  fakeWinnerCount: number;
   loserCount: number;
-  winRate: number | null;  // winners / (winners + losers)
+  winRate: number | null;  // winners / (winners + fake_winners + losers) — fakes считаются как «не победа»
 }
 
 type ParamType = "persona" | "hook" | "body" | "angle";
@@ -54,6 +55,7 @@ export async function GET() {
     qualLeads: number;
     adCount: number;
     winnerCount: number;
+    fakeWinnerCount: number;
     loserCount: number;
   }> = {};
 
@@ -61,7 +63,7 @@ export async function GET() {
     if (!agg[code]) agg[code] = {
       code, paramType: type,
       spend: 0, impressions: 0, leads: 0, qualLeads: 0,
-      adCount: 0, winnerCount: 0, loserCount: 0,
+      adCount: 0, winnerCount: 0, fakeWinnerCount: 0, loserCount: 0,
     };
   };
 
@@ -89,26 +91,31 @@ export async function GET() {
       agg[code].leads       += leads;
       agg[code].qualLeads   += qualLeads;
       agg[code].adCount++;
-      if (status === "winner") agg[code].winnerCount++;
-      if (status === "loser")  agg[code].loserCount++;
+      if (status === "winner")      agg[code].winnerCount++;
+      if (status === "fake_winner") agg[code].fakeWinnerCount++;
+      if (status === "loser")       agg[code].loserCount++;
     }
   }
 
   const stats: ParamStat[] = Object.values(agg).map(a => {
-    const decided = a.winnerCount + a.loserCount;
+    // winRate: настоящие виннеры / (виннеры + fake + лузеры).
+    // fake_winners идут в знаменатель, но НЕ в числитель — они «прошли по KPI,
+    // но не принесли реальной победы», т.е. неудача того же класса что лузер.
+    const decided = a.winnerCount + a.fakeWinnerCount + a.loserCount;
     return {
-      code:         a.code,
-      paramType:    a.paramType,
-      spend:        Math.round(a.spend * 100) / 100,
-      impressions:  a.impressions,
-      leads:        a.leads,
-      qualLeads:    a.qualLeads,
-      cpl:          a.leads > 0 ? Math.round((a.spend / a.leads) * 100) / 100 : null,
-      cpql:         a.qualLeads > 0 ? Math.round((a.spend / a.qualLeads) * 100) / 100 : null,
-      adCount:      a.adCount,
-      winnerCount:  a.winnerCount,
-      loserCount:   a.loserCount,
-      winRate:      decided > 0 ? Math.round((a.winnerCount / decided) * 100) / 100 : null,
+      code:            a.code,
+      paramType:       a.paramType,
+      spend:           Math.round(a.spend * 100) / 100,
+      impressions:     a.impressions,
+      leads:           a.leads,
+      qualLeads:       a.qualLeads,
+      cpl:             a.leads > 0 ? Math.round((a.spend / a.leads) * 100) / 100 : null,
+      cpql:            a.qualLeads > 0 ? Math.round((a.spend / a.qualLeads) * 100) / 100 : null,
+      adCount:         a.adCount,
+      winnerCount:     a.winnerCount,
+      fakeWinnerCount: a.fakeWinnerCount,
+      loserCount:      a.loserCount,
+      winRate:         decided > 0 ? Math.round((a.winnerCount / decided) * 100) / 100 : null,
     };
   });
 

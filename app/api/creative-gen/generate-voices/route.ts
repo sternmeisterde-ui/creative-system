@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase";
+import { brief } from "@/lib/brief";
 
 const anthropic    = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const DIALOGUE_RULES_TEXT = (brief.brand_voice.dialogue_rules ?? []).map(r => `- ${r}`).join("\n");
 const EL_KEY       = process.env.ELEVENLABS_API_KEY!;
 const EL_VOICE_ID  = process.env.ELEVENLABS_VOICE_ID ?? "onwK4e9ZLuTAKqWW03F9";
 const STORAGE_BUCKET = "scene-audio";
@@ -26,8 +28,7 @@ async function extractDialogue(scenePrompt: string, briefContext: string, sceneI
 - Живой разговорный русский, без канцелярщины
 - Персонаж обращается к зрителю напрямую
 - Текст должен логично вытекать из хука/боди/энгла брифа
-- Без вступлений типа "Привет, я..." — сразу в суть
-- Слово "ШтернМастер" произносится как есть
+- Без вступлений типа "Привет, я..." — сразу в суть${DIALOGUE_RULES_TEXT ? "\n" + DIALOGUE_RULES_TEXT : ""}
 - СТРОГО не более 35 слов
 - Вернуть ТОЛЬКО текст монолога, без пояснений
 

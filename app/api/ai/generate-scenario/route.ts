@@ -1,8 +1,21 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { NextRequest } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
+import { brief, getAiContext } from "@/lib/brief";
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+// Правила транслитерации/произношения для диалогов из brief.brand_voice.dialogue_rules.
+// Сюда попадают вещи вроде «SternMeister → ШтернМастер», «DATEV → дАтэв» и т.д.
+// Если в brief они не заданы — секция в промптах опускается.
+const DIALOGUE_RULES = brief.brand_voice.dialogue_rules ?? [];
+const DIALOGUE_RULES_BLOCK = DIALOGUE_RULES.length > 0
+  ? `\nПРАВИЛА ДИАЛОГОВ (особенности произношения / транслитерации):\n${DIALOGUE_RULES.map(r => `  • ${r}`).join("\n")}\n`
+  : "";
+// Короткий inline-маркер для placeholder'ов внутри длинных промптов
+const DIALOGUE_INLINE_HINT = DIALOGUE_RULES.length > 0
+  ? `соблюдая правила: ${DIALOGUE_RULES.map(r => r.split(/[—:]|\(/)[0].trim()).join("; ")}`
+  : "без правил транслитерации";
 
 const TYPE_INSTRUCTIONS: Record<string, string> = {
   persona: `Ты пишешь ПРОФИЛЬ ПЕРСОНЫ для рекламного сценария.
@@ -39,7 +52,7 @@ const TYPE_INSTRUCTIONS: Record<string, string> = {
 // Stack: Nano Banana Pro (photos) → Veo 3.1 fast/quality (video + voice)
 // Edit: Premiere Pro. Subtitles added in post (SF Pro Semibold 84pt, black stroke 5).
 // iPhone aesthetic throughout: no gimbal, no LUT, natural grain, handheld micro-shake.
-// Dialogue rules: no dashes, SternMeister → ШтернМастер, datev → дАтэв (stress on A).
+// Dialogue rules: загружаются из brief.brand_voice.dialogue_rules (если заданы).
 // Same character appearance + voice in EVERY prompt. No text/overlays in video.
 // ──────────────────────────────────────────────────────────────────────────────
 
@@ -48,7 +61,7 @@ const VIDEO_PROMPT_FORMAT_RULES = `
 - Эстетика: снято на iPhone 15 Pro Max, без gimbal, без LUT, без cinematic grading, видимый natural grain, вертикаль 9:16
 - Субтитры и текст: вообще не упоминать в промпте (добавляются на постпродакшене)
 - Один персонаж: внешность, одежда и тембр голоса идентичны во ВСЕХ сценах
-- Диалоги на русском, без тире, без экранных субтитров: ШтернМастер (не SternMeister), дАтэв (ударение на первый слог — пишем именно дАтэв везде в диалоге)
+- Диалоги на языке аудитории, без тире, без экранных субтитров${DIALOGUE_RULES_BLOCK ? "\n" + DIALOGUE_RULES.map(r => `  • ${r}`).join("\n") : ""}
 - Photo model: Nano Banana Pro
 - Video model: Veo 3.1 fast (quality — если дефекты в речи или движениях)
 
@@ -66,7 +79,7 @@ Subject: [same Slavic/Eastern European character, 15+ physical attributes identi
 Action: [clip starts immediately, no silence, specific actions and micro-expressions, timing]
 Scene: [environment, props, lighting — detailed]
 Style: [shot type], camera at [angle]. Natural handheld iPhone micro-shake — no gimbal, no stabilization. Vertical aspect ratio 9:16. iPhone natural color science, [lighting conditions], no cinematic LUT, no film grade.
-Dialogue: (Character): "[exact Russian text, no dashes, ШтернМастер, дАтэв]" (Tone: [delivery style])
+Dialogue: (Character): "[exact dialogue line on audience language, no dashes, ${DIALOGUE_INLINE_HINT}]" (Tone: [delivery style])
 Sounds: [specific ambient audio, no music unless specified]
 Technical (Negative Prompt): No subtitles, no captions, no text overlays of any kind, no watermarks, no on-screen graphics, no cinematic color grading, no gimbal-smooth camera movement, no beauty retouching, no skin smoothing filter, [scene-specific negatives]`;
 
@@ -113,7 +126,7 @@ Subject: [полное описание персонажа идентичное 
 Action: [клип начинается немедленно без паузы. Конкретные действия в первую секунду — что делает, микровыражения, темп. Нет театральности.]
 Scene: [детальная среда — где происходит, что в фоне, реквизит, освещение]
 Style: [Extreme close-up / Medium shot], camera at [direct eye level / slightly below]. Natural handheld iPhone micro-shake — no gimbal, no stabilization. Vertical aspect ratio 9:16. iPhone natural color science, [условия освещения], no cinematic LUT, no film grade.
-Dialogue: (Character): "[точная реплика хука без тире, ШтернМастер вместо SternMeister, дАтэв вместо DATEV]" (Tone: [эмоциональный дескриптор доставки])
+Dialogue: (Character): "[точная реплика хука без тире${DIALOGUE_RULES.length > 0 ? ", соблюдая правила транслитерации из брифа" : ""}]" (Tone: [эмоциональный дескриптор доставки])
 Sounds: [конкретные фоновые звуки — например "constant low-frequency hum of fluorescent lighting, distant supermarket ambient"]
 Technical (Negative Prompt): No subtitles, no captions, no text overlays of any kind, no watermarks, no on-screen graphics, no cinematic color grading, no gimbal-smooth camera movement, no beauty retouching, no skin smoothing filter, no styled hair, no heavy makeup, [дополнительные запреты под эту сцену]
 
@@ -142,7 +155,7 @@ Subject: The same [пол/возраст] — identical face, bone structure, ag
 Action: [клип начинается немедленно. Конкретные действия, длительность кадра, ключевые моменты]
 Scene: [среда, реквизит, освещение]
 Style: [тип кадра], camera at [угол]. Natural handheld iPhone micro-shake — no gimbal. Vertical aspect ratio 9:16. iPhone natural color science, [условие освещения], no cinematic LUT, no film grade.
-Dialogue: (Character): "[реплика без тире, ШтернМастер, дАтэв]" (Tone: [дескриптор])
+Dialogue: (Character): "[реплика без тире${DIALOGUE_RULES.length > 0 ? ", по правилам брифа" : ""}]" (Tone: [дескриптор])
 Sounds: [конкретный ambient]
 Technical (Negative Prompt): No subtitles, no captions, no text overlays of any kind, no watermarks, no on-screen graphics, no cinematic color grading, no gimbal-smooth camera movement, no beauty retouching, no skin smoothing, [специфичные запреты для этой сцены]
 
@@ -240,10 +253,9 @@ export async function POST(req: NextRequest) {
   const formatLabel = format ? `Формат рекламы: ${format.toUpperCase()}${isVideo ? " (видео 15–35 сек)" : " (статичный баннер)"}` : "";
 
   const prompt = `Ты — эксперт по рекламным сценариям для Meta Ads (Facebook/Instagram).
-Продукт: SternMeister — курсы бухгалтерии для русскоязычных иммигрантов в Германии.
-Аудитория: иммигранты 28–50 лет, работают не по специальности (склад, минижоб, сервис).
-Цель: запись на бесплатную консультацию.
-Язык рекламы: русский (аудитория — русскоязычные).
+
+${getAiContext()}
+${DIALOGUE_RULES_BLOCK}
 ${formatLabel}
 
 ПАРАМЕТР: ${type.toUpperCase()}

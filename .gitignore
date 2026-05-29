@@ -30,8 +30,9 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
+# env files — игнорим всё КРОМЕ .env.example
 .env*
+!.env.example
 
 # vercel
 .vercel
@@ -39,4 +40,36 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-.env*.local
+
+# Backups создаваемые setup.mjs (brief.config.ts.NNNNN.bak)
+*.bak
+
+# OAuth / credential файлы (никогда не коммитить!)
+**/token.json
+**/token_*.json
+**/credentials.json
+**/*-credentials.json
+**/*.pem
+**/*.key
+
+# Legacy mapping scripts (Python) — содержат OAuth токены и внутренние данные.
+# Setup wizard (scripts/setup.mjs) и плюрио тест-скрипт остаются.
+scripts/*.py
+scripts/*.json
+scripts/*.csv
+scripts/run_*.sh
+scripts/run.sh
+scripts/README.md
+scripts/requirements.txt
+
+# Internal docs / presentations / artifacts — не для публичного репо
+plurio_test_out/
+plurio_workflow.txt
+plurio_workflow.docx
+presentation*.html
+presentation*.md
+creative-system-skill.md
+competitor-analysis-prompt.md
+creative-system-excalidraw.excalidraw
+supabase/.temp/
+supabase/.branches/

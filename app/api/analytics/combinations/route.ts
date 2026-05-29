@@ -9,13 +9,14 @@ export interface ComboStat {
   typeB: string;   // "hook"
   adCount: number;
   winners: number;
+  fakeWinners: number;
   losers: number;
   leads: number;
   qualLeads: number;
   spend: number;
   cpl: number | null;
   cpql: number | null;
-  winRate: number | null;
+  winRate: number | null;  // настоящие виннеры / (winners + fakes + losers)
 }
 
 // All pairwise combinations to analyze
@@ -38,7 +39,7 @@ const FIELD_TO_TYPE: Record<string, string> = {
 type AggEntry = {
   codeA: string; codeB: string; typeA: string; typeB: string;
   spend: number; leads: number; qualLeads: number;
-  adCount: number; winners: number; losers: number;
+  adCount: number; winners: number; fakeWinners: number; losers: number;
 };
 
 export async function GET() {
@@ -86,33 +87,35 @@ export async function GET() {
           typeA: FIELD_TO_TYPE[fieldA],
           typeB: FIELD_TO_TYPE[fieldB],
           spend: 0, leads: 0, qualLeads: 0,
-          adCount: 0, winners: 0, losers: 0,
+          adCount: 0, winners: 0, fakeWinners: 0, losers: 0,
         };
       }
       agg[comboKey].spend    += parseFloat(row.spend ?? 0);
       agg[comboKey].leads    += parseInt(row.leads ?? 0);
       agg[comboKey].qualLeads += parseInt(row.qual_leads ?? 0);
       agg[comboKey].adCount++;
-      if (row.auto_status === "winner") agg[comboKey].winners++;
-      if (row.auto_status === "loser")  agg[comboKey].losers++;
+      if (row.auto_status === "winner")      agg[comboKey].winners++;
+      if (row.auto_status === "fake_winner") agg[comboKey].fakeWinners++;
+      if (row.auto_status === "loser")       agg[comboKey].losers++;
     }
 
     const combos: ComboStat[] = Object.values(agg).map(a => {
-      const decided = a.winners + a.losers;
+      const decided = a.winners + a.fakeWinners + a.losers;
       return {
-        codeA:    a.codeA,
-        codeB:    a.codeB,
-        typeA:    a.typeA,
-        typeB:    a.typeB,
-        adCount:  a.adCount,
-        winners:  a.winners,
-        losers:   a.losers,
-        leads:    a.leads,
-        qualLeads: a.qualLeads,
-        spend:    Math.round(a.spend * 100) / 100,
-        cpl:      a.leads > 0 ? Math.round((a.spend / a.leads) * 100) / 100 : null,
-        cpql:     a.qualLeads > 0 ? Math.round((a.spend / a.qualLeads) * 100) / 100 : null,
-        winRate:  decided > 0 ? Math.round((a.winners / decided) * 100) / 100 : null,
+        codeA:       a.codeA,
+        codeB:       a.codeB,
+        typeA:       a.typeA,
+        typeB:       a.typeB,
+        adCount:     a.adCount,
+        winners:     a.winners,
+        fakeWinners: a.fakeWinners,
+        losers:      a.losers,
+        leads:       a.leads,
+        qualLeads:   a.qualLeads,
+        spend:       Math.round(a.spend * 100) / 100,
+        cpl:         a.leads > 0 ? Math.round((a.spend / a.leads) * 100) / 100 : null,
+        cpql:        a.qualLeads > 0 ? Math.round((a.spend / a.qualLeads) * 100) / 100 : null,
+        winRate:     decided > 0 ? Math.round((a.winners / decided) * 100) / 100 : null,
       };
     });
 

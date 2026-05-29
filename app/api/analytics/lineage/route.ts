@@ -32,6 +32,7 @@ export interface SessionLineage {
   approvedBriefs: number;
   publishedAds: number;
   winners: number;
+  fakeWinners: number;
   losers: number;
   totalSpend: number;
   avgCpl: number | null;
@@ -92,9 +93,10 @@ export async function GET() {
       .map(b => b.meta_ad_name ? perfMap[b.meta_ad_name] : null)
       .filter(Boolean) as AdLineage[];
 
-    const winners = publishedPerf.filter(p => p.autoStatus === "winner").length;
-    const losers  = publishedPerf.filter(p => p.autoStatus === "loser").length;
-    const totalSpend = publishedPerf.reduce((sum, p) => sum + p.spend, 0);
+    const winners     = publishedPerf.filter(p => p.autoStatus === "winner").length;
+    const fakeWinners = publishedPerf.filter(p => p.autoStatus === "fake_winner").length;
+    const losers      = publishedPerf.filter(p => p.autoStatus === "loser").length;
+    const totalSpend  = publishedPerf.reduce((sum, p) => sum + p.spend, 0);
 
     const withLeads = publishedPerf.filter(p => p.cpl != null);
     const avgCpl = withLeads.length > 0
@@ -122,6 +124,7 @@ export async function GET() {
       approvedBriefs:   approved.length,
       publishedAds:     published.length,
       winners,
+      fakeWinners,
       losers,
       totalSpend:       Math.round(totalSpend * 100) / 100,
       avgCpl:           avgCpl != null ? Math.round(avgCpl * 100) / 100 : null,

@@ -2,6 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
 import { runAlertCheck } from "@/lib/alert-check";
 
+// Plurio sync = MCP-SSE + LLM-обработка + опциональный polling.
+// Hobby plan cap = 300s. При длинных запросах синкаем помесячно, чтобы укладываться.
+export const maxDuration = 300;
+
 const MCP_BASE   = "https://mcp-ryen.onrender.com";
 const ELLY_BASE  = "https://agi.ellyanalytics.com";
 const PLURIO_KEY = process.env.PLURIO_API_KEY!;
@@ -183,6 +187,88 @@ function parseResponse(text: string): EllyRow[] | null {
   return parseViz(text) ?? parseMarkdownTable(text);
 }
 
+// ── TSV file fallback ─────────────────────────────────────────────────────────
+// Когда выгрузка большая (>~150 строк), Plurio отдаёт presigned S3 URL на TSV
+// вместо inline markdown. Распознаём URL и парсим файл по табам.
+
+function extractTsvUrl(text: string): string | null {
+  // sql-query-result-{id}.tsv с возможными дефисами/подчёркиваниями в id.
+  // URL может быть URL-encoded (sometimes %3D вместо =), но https://... всегда прямой.
+  const m = text.match(/https?:\/\/[^\s)"']*sql-query-result-[A-Za-z0-9_-]+\.tsv[^\s)"']*/);
+  return m?.[0] ?? null;
+}
+
+function hasTsvMention(text: string): boolean {
+  return /sql-query-result-[A-Za-z0-9_-]+\.tsv/.test(text);
+}
+
+// Если Plurio упомянул tsv-файл, но URL вне видимой части ответа —
+// просим в том же чате выдать ПОЛНУЮ presigned URL.
+async function askForTsvUrl(chatId: string): Promise<string | null> {
+  const { sse, sessionUrl } = await mcpConnect();
+  try {
+    await rpc(sessionUrl, 2, "tools/call", {
+      name: "ask_plurio",
+      arguments: {
+        project_id: PROJECT_ID,
+        chat_id: chatId,
+        question: "Покажи полный presigned URL на TSV-файл из предыдущего ответа. " +
+                  "Формат: https://...sql-query-result-*.tsv?... — целиком, в одну строку, без обрезки.",
+      },
+    });
+    const text = await collectToolResult(sse, 90_000);
+    return extractTsvUrl(text);
+  } finally {
+    sse.close();
+  }
+}
+
+function parseTsvText(text: string): EllyRow[] {
+  const norm = (h: string) => h.toLowerCase().replace(/[^a-zа-я0-9]/gi, "");
+  const lines = text.split(/\r?\n/).filter(l => l.trim());
+  if (lines.length < 2) return [];
+
+  const headers = lines[0].split("\t").map(norm);
+  const idx = {
+    adId:      headers.findIndex(h => h === "adid" || h === "id"),
+    adName:    headers.findIndex(h => h === "adname" || h === "name" || h === "название"),
+    leads:     headers.findIndex(h => h === "leads" || h === "лиды"),
+    qualLeads: headers.findIndex(h => h === "ql" || h.includes("qual") || h === "квал"),
+    spend:     headers.findIndex(h => h === "advspend" || h === "spend" || h === "бюджет"),
+    revenue:   headers.findIndex(h => h === "revenue" || h === "выручка"),
+  };
+
+  if (idx.adName === -1 && idx.adId === -1) return [];
+
+  const rows: EllyRow[] = [];
+  for (const line of lines.slice(1)) {
+    const cols = line.split("\t");
+    const adName = idx.adName >= 0 ? (cols[idx.adName] ?? "").trim() : "";
+    const adId   = idx.adId   >= 0 ? (cols[idx.adId]   ?? "").trim() : "";
+    if (!adName && !adId) continue;
+    rows.push({
+      adId,
+      adName:    adName || adId,
+      leads:     idx.leads     >= 0 ? parseNum(cols[idx.leads])     : 0,
+      qualLeads: idx.qualLeads >= 0 ? parseNum(cols[idx.qualLeads]) : 0,
+      spend:     idx.spend     >= 0 ? parseNum(cols[idx.spend])     : 0,
+      revenue:   idx.revenue   >= 0 ? parseNum(cols[idx.revenue])   : 0,
+    });
+  }
+  return rows;
+}
+
+async function fetchTsv(url: string): Promise<EllyRow[]> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`TSV fetch failed: HTTP ${res.status}`);
+  const text = await res.text();
+  const rows = parseTsvText(text);
+  if (rows.length === 0) {
+    throw new Error(`TSV downloaded but parser got 0 rows (size=${text.length})`);
+  }
+  return rows;
+}
+
 function extractChatId(text: string): string | null {
   const m = text.match(/\*\*Chat ID:\*\*\s+`([^`]+)`/);
   return m?.[1] ?? null;
@@ -205,6 +291,16 @@ async function pollChatMessages(chatId: string, pollDeadline: number): Promise<E
 
     if (!text || text.includes("No messages found")) continue;
 
+    // Большая выгрузка → ссылка на TSV
+    const tsvUrl = extractTsvUrl(text);
+    if (tsvUrl) return await fetchTsv(tsvUrl);
+
+    // TSV упомянут, но URL не виден — попросим явно
+    if (hasTsvMention(text)) {
+      const url = await askForTsvUrl(chatId);
+      if (url) return await fetchTsv(url);
+    }
+
     const rows = parseResponse(text);
     if (rows && rows.length > 0) return rows;
   }
@@ -220,31 +316,48 @@ async function syncElly(dateFrom: string, dateTo: string): Promise<EllyRow[]> {
   const { sse, sessionUrl } = await mcpConnect();
 
   const question =
-    `Дай данные по всем объявлениям (ad level) из Facebook and Instagram за период ${dateFrom} — ${dateTo}. ` +
-    `Нужно: AdId, AdName, сумма Leads, сумма QL, сумма Adv Spend, сумма Revenue. ` +
+    `Дай данные по объявлениям (ad level) из Facebook and Instagram за период ${dateFrom} — ${dateTo}. ` +
+    `Включи ВСЕ объявления, у которых Leads > 0 (без top-N ограничения, без обрезки). ` +
+    `Колонки: AdId, AdName, сумма Leads, сумма QL, сумма Adv Spend, сумма Revenue. ` +
     `Фильтр: AttributionType = 'Leads Last Ad Click', SourceGroupName = 'Facebook and Instagram'. ` +
-    `Верни ТОЛЬКО markdown таблицу со всеми объявлениями, без комментариев. Колонки: AdId | AdName | Leads | QL | Adv Spend | Revenue.`;
+    `Верни ОДНУ markdown-таблицу со всеми строками. Если строк слишком много для inline — отдай TSV-файл, ` +
+    `но обязательно укажи ПОЛНУЮ presigned URL в формате https://...sql-query-result-*.tsv?... в тексте ответа. ` +
+    `Без преамбулы.`;
 
   await rpc(sessionUrl, 2, "tools/call", {
     name: "ask_plurio",
     arguments: { project_id: PROJECT_ID, question },
   });
 
-  // First attempt: wait up to 3 min for SSE result
-  const text = await collectToolResult(sse, 180_000);
+  // Hobby plan cap = 300s, оставляем headroom.
+  // Phase 1 (SSE): 120s. Phase 2 (poll): +120s. Всего ~245s, +setup ~250-260s.
+  const text = await collectToolResult(sse, 120_000);
   sse.close();
 
   // Check if Plurio is still processing (SSE timeout → "still running" message)
   if (text.includes("still running") || text.includes("Chat ID:")) {
     const chatId = extractChatId(text);
     if (!chatId) throw new Error(`Still running but no chat_id found. Tail: ${text.slice(-300)}`);
-    // Poll for up to 10 more minutes
-    return pollChatMessages(chatId, Date.now() + 10 * 60_000);
+    return pollChatMessages(chatId, Date.now() + 120_000);
+  }
+
+  // Большая выгрузка → ссылка на TSV (Plurio так делает когда строк >~150)
+  const tsvUrl = extractTsvUrl(text);
+  if (tsvUrl) return await fetchTsv(tsvUrl);
+
+  // Plurio упомянул TSV-файл, но URL в видимой части ответа нет —
+  // делаем follow-up в тот же chat и просим полный URL.
+  if (hasTsvMention(text)) {
+    const chatId = extractChatId(text);
+    if (chatId) {
+      const url = await askForTsvUrl(chatId);
+      if (url) return await fetchTsv(url);
+    }
   }
 
   const rows = parseResponse(text);
   if (!rows || rows.length === 0) {
-    throw new Error(`PARSE_FAIL:hasViz=${text.includes("plurio_viz")},hasPipe=${text.includes("|")},len=${text.length},tail=${text.slice(-400)}`);
+    throw new Error(`PARSE_FAIL:hasViz=${text.includes("plurio_viz")},hasPipe=${text.includes("|")},hasTsv=${/sql-query-result/.test(text)},len=${text.length},tail=${text.slice(-400)}`);
   }
   return rows;
 }
@@ -252,6 +365,15 @@ async function syncElly(dateFrom: string, dateTo: string): Promise<EllyRow[]> {
 // ── Route handlers ────────────────────────────────────────────────────────────
 
 export async function POST(req: NextRequest) {
+  // Опциональная интеграция: если PLURIO_API_KEY не задан, эндпоинт возвращает
+  // 503, чтобы UI/cron мог это спокойно перехватить.
+  if (!process.env.PLURIO_API_KEY) {
+    return NextResponse.json(
+      { error: "Plurio/Elly integration not configured (PLURIO_API_KEY missing). Это опциональная интеграция." },
+      { status: 503 }
+    );
+  }
+
   const body = await req.json().catch(() => ({})) as { dateFrom?: string; dateTo?: string };
   const today = new Date();
   const dateTo   = body.dateTo   ?? today.toISOString().slice(0, 10);
@@ -265,15 +387,19 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createServiceClient();
-  const TODAY = today.toISOString().slice(0, 10);
 
-  // Delete stale elly rows before inserting fresh aggregate to avoid double counting
-  await supabase.from("pbi_metrics").delete().like("ad_id", "elly:%");
+  // Удаляем только строки именно этого периода (по dateTo), чтобы переписать
+  // повторный sync того же квартала, но НЕ затереть соседние кварталы.
+  await supabase
+    .from("pbi_metrics")
+    .delete()
+    .like("ad_id", "elly:%")
+    .eq("date", dateTo);
 
   const payload = rows.map(r => ({
     ad_id:      `elly:${r.adId || r.adName.trim()}`,
     ad_name:    r.adName.trim(),
-    date:       TODAY,
+    date:       dateTo,
     leads:      Math.round(r.leads),
     qual_leads: Math.round(r.qualLeads),
     spend:      r.spend,

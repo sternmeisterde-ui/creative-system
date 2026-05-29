@@ -5,8 +5,8 @@ import type { Creative, Persona, Hook, Body, Angle, Format, WinnerStatus, Source
 import { Card, PageHeader, Button, Badge, Modal, Label, Empty, SectionTitle } from "@/components/ui";
 
 const FORMATS: Format[] = ["ugc", "static", "animation", "human", "mixed"];
-const STATUS_COLORS: Record<WinnerStatus, string> = { winner: "#6EC8A0", loser: "#D96B6B", unknown: "#555", testing: "#E8AA42" };
-const STATUS_LABELS: Record<WinnerStatus, string> = { winner: "Виннер", loser: "Лузер", unknown: "Неизвестно", testing: "Тестирование" };
+const STATUS_COLORS: Record<WinnerStatus, string> = { winner: "#6EC8A0", fake_winner: "#FF8B5A", loser: "#D96B6B", unknown: "#555", testing: "#E8AA42" };
+const STATUS_LABELS: Record<WinnerStatus, string> = { winner: "Виннер", fake_winner: "Fake winner", loser: "Лузер", unknown: "Неизвестно", testing: "Тестирование" };
 
 function CreativeForm({ personas, hooks, bodies, angles, initial, onSave, onCancel }: {
   personas: Persona[]; hooks: Hook[]; bodies: Body[]; angles: Angle[];

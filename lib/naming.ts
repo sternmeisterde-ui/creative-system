@@ -1,14 +1,20 @@
 import { supabase } from "./supabase";
+import { brief, getFlows } from "./brief";
 
-// ── Префиксы параметров ───────────────────────────────────────────────────────
-export const CODE_PREFIX = {
-  personas: "P",
-  hooks:    "H",
-  bodies:   "B",
-  angles:   "A",
-} as const;
+// ── Префиксы параметров (из brief.config.ts) ─────────────────────────────────
+// Сохраняем плюральные ключи под имена таблиц (personas/hooks/bodies/angles),
+// чтобы не ломать существующий код. Сами буквы (P/H/B/A) и порядок берём из brief.
+export const CODE_PREFIX = Object.fromEntries(
+  brief.creative_matrix.params.map(p => [`${p.key}s`, p.letter])
+) as Record<string, string>;
 
-export type ParamTable = keyof typeof CODE_PREFIX;
+export type ParamTable = string;  // 'personas' | 'hooks' | 'bodies' | 'angles' | ...
+
+const PARAM_KEYS_IN_ORDER = brief.creative_matrix.params.map(p => p.key);
+const LETTER_TO_KEY: Record<string, string> = Object.fromEntries(
+  brief.creative_matrix.params.map(p => [p.letter, p.key])
+);
+const FLOW_CODES = getFlows().map(f => f.code.toUpperCase());
 
 // ── Формат имени объявления ───────────────────────────────────────────────────
 // P2-H1-B3-A5-UGC-COM
@@ -57,32 +63,49 @@ export function parseAdNameWithMapping(
   };
 }
 
-const FORMAT_VALUES = ["UGC", "STATIC", "ANIMATION", "HUMAN", "MIXED"];
+const FORMAT_VALUES = brief.creative_matrix.formats.map(f => f.toUpperCase());
 
 /**
  * Разбирает имя объявления и извлекает коды параметров.
- * Поддерживает формат: P2-H1-B3-A5-UGC-COM
+ * Формат и список параметров задаются в brief.config.ts.
+ * Пример (SternMeister): P2-H1-B3-A5-UGC-COM
  */
 export function parseAdName(adName: string): AdNameParts {
   const parts = adName.toUpperCase().split(/[-_\s]+/);
 
-  let personaCode: string | null = null;
-  let hookCode:    string | null = null;
-  let bodyCode:    string | null = null;
-  let angleCode:   string | null = null;
-  let format:      string | null = null;
-  let flow:        string | null = null;
+  const result: AdNameParts = {
+    personaCode: null, hookCode: null, bodyCode: null, angleCode: null,
+    format: null, flow: null,
+  };
+  // dynamic codes — на случай custom param keys
+  const dynamicCodes: Record<string, string | null> = {};
 
   for (const part of parts) {
-    if (/^P\d+$/i.test(part))    personaCode = part.toUpperCase();
-    else if (/^H\d+$/i.test(part)) hookCode  = part.toUpperCase();
-    else if (/^B\d+$/i.test(part)) bodyCode  = part.toUpperCase();
-    else if (/^A\d+$/i.test(part)) angleCode = part.toUpperCase();
-    else if (FORMAT_VALUES.includes(part)) format = part;
-    else if (part === "COM" || part === "GOV") flow = part.toLowerCase();
+    // Try param-letter+digit (P3, H1, ...) per brief
+    const letterMatch = part.match(/^([A-Z])(\d+)$/);
+    if (letterMatch) {
+      const letter = letterMatch[1];
+      const key = LETTER_TO_KEY[letter];
+      if (key) {
+        const fieldName = `${key}Code`;
+        if (fieldName in result) {
+          (result as unknown as Record<string, string | null>)[fieldName] = part;
+        } else {
+          dynamicCodes[fieldName] = part;
+        }
+        continue;
+      }
+    }
+    if (FORMAT_VALUES.includes(part)) { result.format = part; continue; }
+    if (FLOW_CODES.includes(part))    { result.flow = part.toLowerCase(); continue; }
   }
 
-  return { personaCode, hookCode, bodyCode, angleCode, format, flow };
+  return result;
+}
+
+// Список ключей параметров в порядке brief — используется внешними потребителями.
+export function getParamKeysInOrder(): string[] {
+  return PARAM_KEYS_IN_ORDER;
 }
 
 /**
@@ -140,8 +163,10 @@ export async function getNextCode(table: ParamTable): Promise<string> {
  * Автоматически назначает коды всем параметрам без кода.
  * Вызывать один раз при миграции существующих данных.
  */
-export async function assignMissingCodes(): Promise<Record<ParamTable, number>> {
-  const counts: Record<ParamTable, number> = { personas: 0, hooks: 0, bodies: 0, angles: 0 };
+export async function assignMissingCodes(): Promise<Record<string, number>> {
+  const counts: Record<string, number> = Object.fromEntries(
+    Object.keys(CODE_PREFIX).map(k => [k, 0])
+  );
 
   for (const table of Object.keys(CODE_PREFIX) as ParamTable[]) {
     const prefix = CODE_PREFIX[table];
