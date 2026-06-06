@@ -216,7 +216,8 @@ export const briefStore = {
       adapted_body: b.adaptedBody,
       adapted_angle: b.adaptedAngle,
       full_brief: b.fullBrief,
-      status: "pending",
+      // Auto-approve: убрали ручной gate «одобрить/правки» — все брифы готовы к производству.
+      status: "approved",
       batch_index: b.batchIndex ?? i,
     }));
     const { data } = await supabase.from("briefs").insert(payload).select();

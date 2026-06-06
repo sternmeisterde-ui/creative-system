@@ -22,7 +22,9 @@ const t2iBase = (prompt: string) => ({
 
 const klingBase = (prompt: string) => ({
   prompt,
-  duration: 5,
+  // Kling 2.6 Pro поддерживает 5 или 10 сек. Для многосценной склейки
+  // (через /api/creative-gen/generate-scenes) 10с * 4-6 сцен = 40-60 сек итого.
+  duration: 10,
   aspect_ratio: "9:16",
 });
 
@@ -96,5 +98,8 @@ export function findModel(slug: string): HiggsfieldModel | undefined {
   return HIGGSFIELD_MODELS.find(m => m.slug === slug);
 }
 
-export const DEFAULT_STATIC_MODEL = "nano-banana-v2";
+// Nano Banana Pro у пользователя в unlimited (365 Exclusive) — не тратит credits.
+// nano-banana-v2 / nano-banana-pro-2 НЕ в unlimited.
+export const DEFAULT_STATIC_MODEL = "nano-banana-pro";
+// Kling 2.6 Pro — лучшее качество видео в Higgsfield (платная, не в unlimited).
 export const DEFAULT_VIDEO_MODEL  = "kling-video/v2.6/pro/text-to-video";

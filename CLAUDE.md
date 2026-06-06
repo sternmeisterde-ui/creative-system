@@ -188,6 +188,20 @@ Creative System — внутренний инструмент производс
 - Видео (все остальные) → text-to-video (kling-2.6-pro и др.)
 - Модели: `lib/higgsfield-models.ts`
 
+### Финальный монтаж — локальный ffmpeg-воркер
+- Бэкенд монтажа выбирается env-флагом `MONTAGE_BACKEND` (`local` по умолчанию | `creatomate` fallback).
+- **local**: `auto-advance`, когда все сцены залипсинкены, ставит группе `status='ready_montage'`
+  (Creatomate НЕ вызывается). Локальный `scripts/montage-worker.mjs` (Node, на Mac, как `pack-poll.sh`)
+  забирает такие группы и собирает видео по рецептам скилла `.claude/skills/video-montage`:
+  CFR-нормализация 1080×1920@30 → concat → пословные субтитры из `word_timestamps` → BGM → QA → `final_url`.
+- Субтитры — **PNG-overlay** (Pillow `gen_text_overlay.py` + ffmpeg `overlay ... enable`), а НЕ libass:
+  homebrew-сборка ffmpeg идёт без libass/drawtext. PNG короткими входами + `setpts`-сдвиг (≈1 мин на ролик).
+- Запуск: `npm run montage` (поллинг) или `npm run montage:once`. Финал → Storage bucket `scene-final`.
+- Авто-запуск на Mac: LaunchAgent `scripts/launchd/de.sternmeister.montage-worker.plist` (см. `scripts/launchd/README.md`) — крутится фоном, рестартует при падении. Логи: `~/Library/Logs/montage-worker.{out,err}.log`.
+- Конфиг env: `MONTAGE_FONT` (impact/helvetica), `MONTAGE_BGM_VOLUME` (нужен `assets/bgm/default.mp3`),
+  `MONTAGE_UNIQUIFY` (анти-фингерпринт для репостов), `MONTAGE_MAX_WORDS`, `MONTAGE_POLL_SECONDS`.
+- Статусы группы: `… → lipsync → ready_montage → montaging → done | error`.
+
 ### Elly (Plurio) — сквозная аналитика
 - SSE-подключение через `POST /api/pbi/elly-sync`
 - Подтягивает leads, qualLeads, revenue по adId
@@ -214,6 +228,8 @@ Creative System — внутренний инструмент производс
 | `lib/alert-check.ts` | Логика алертов + Telegram |
 | `lib/higgsfield-models.ts` | Реестр моделей Higgsfield |
 | `lib/supabase.ts` | Supabase клиенты |
+| `scripts/montage-worker.mjs` | Локальный ffmpeg-воркер финального монтажа (MONTAGE_BACKEND=local) |
+| `.claude/skills/video-montage/` | Скилл монтажа (SKILL.md + gen_subs.py / gen_text_overlay.py) |
 | `components/ui.tsx` | Дизайн-система: Card, Button, Badge, Modal, PageHeader и др. |
 | `components/Sidebar.tsx` | Навигация |
 | `components/AppShell.tsx` | Лейаут |

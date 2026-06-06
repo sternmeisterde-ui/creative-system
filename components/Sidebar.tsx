@@ -10,6 +10,7 @@ const NAV = [
   { href: "/mapping", label: "Маппинг объявлений", icon: "🗂" },
   { href: "/library", label: "Библиотека", icon: "📚" },
   { href: "/database", label: "База данных", icon: "🗄" },
+  { href: "/report", label: "Отчёт", icon: "🧠" },
   { href: "/builder", label: "Конструктор", icon: "⚡" },
   { href: "/scenarios", label: "Сценарии", icon: "✍️" },
   { href: "/briefs", label: "Брифы", icon: "📋" },

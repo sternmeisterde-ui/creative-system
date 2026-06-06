@@ -1,8 +1,12 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { NextRequest } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import type { Persona, Hook, Body, Angle, ConstructorSession, Scenario, Rule } from "@/lib/types";
 import { createServiceClient } from "@/lib/supabase";
 import { getAiContext, getBusiness } from "@/lib/brief";
+
+// 20 брифов × ~15-30 секунд каждый = до 10 минут.
+// Hobby cap = 300s. Используем максимум; параллелизируем через batch чтобы уложиться.
+export const maxDuration = 300;
 
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -42,24 +46,59 @@ export async function POST(req: NextRequest) {
     : "";
 
   const combinations: { personaId: string; hookId: string; bodyId: string; angleId: string }[] = [];
-  for (const pId of session.selectedPersonas)
-    for (const hId of session.selectedHooks)
-      for (const bId of session.selectedBodies)
-        for (const aId of session.selectedAngles)
-          combinations.push({ personaId: pId, hookId: hId, bodyId: bId, angleId: aId });
 
-  const BATCH_SIZE = 2;
+  // Pack-mode: session создана через /api/pack/generate → берём готовые слоты.
+  // Конвертируем коды P/H/B/A → uuids через библиотеку.
+  const packMeta = (session as { packMetadata?: { slots: Array<{ codes: { persona: string | null; hook: string | null; body: string | null; angle: string | null } }> } }).packMetadata;
+  if (packMeta?.slots?.length) {
+    const codeToId = (rows: Array<{ id: string; code?: string | null }>) =>
+      new Map(rows.filter(r => r.code).map(r => [r.code as string, r.id]));
+    const pByCode = codeToId(personas);
+    const hByCode = codeToId(hooks);
+    const bByCode = codeToId(bodies);
+    const aByCode = codeToId(angles);
+
+    for (const slot of packMeta.slots) {
+      const personaId = slot.codes.persona ? pByCode.get(slot.codes.persona) : undefined;
+      const hookId    = slot.codes.hook    ? hByCode.get(slot.codes.hook)    : undefined;
+      const bodyId    = slot.codes.body    ? bByCode.get(slot.codes.body)    : undefined;
+      const angleId   = slot.codes.angle   ? aByCode.get(slot.codes.angle)   : undefined;
+      if (!personaId || !hookId || !bodyId || !angleId) continue; // пропускаем неполный слот
+      combinations.push({ personaId, hookId, bodyId, angleId });
+    }
+  } else {
+    // Legacy mode: ручной матричный конструктор (декартово произведение).
+    for (const pId of session.selectedPersonas)
+      for (const hId of session.selectedHooks)
+        for (const bId of session.selectedBodies)
+          for (const aId of session.selectedAngles)
+            combinations.push({ personaId: pId, hookId: hId, bodyId: bId, angleId: aId });
+  }
+
+  if (combinations.length === 0) {
+    return new NextResponse(JSON.stringify({ error: "No combinations to generate. Session has neither pack_metadata.slots nor selected_* arrays." }), { status: 400 });
+  }
+
+  // Один бриф = один вызов. Анализ:
+  //   при BATCH=4 → max_tokens=16k → реально 60-180с per batch и truncation.
+  //   при BATCH=1 → max_tokens=6k → 20-30с per call, нет truncation.
+  //   при concurrency=5 → 4 раунда × 30с = 120с — уверенно в Vercel 300s.
+  const BATCH_SIZE = 1;
   const encoder = new TextEncoder();
+
+  const batches: typeof combinations[] = [];
+  for (let i = 0; i < combinations.length; i += BATCH_SIZE) {
+    batches.push(combinations.slice(i, i + BATCH_SIZE));
+  }
 
   const stream = new ReadableStream({
     async start(controller) {
       try {
         let done = 0;
-        for (let i = 0; i < combinations.length; i += BATCH_SIZE) {
-          const batch = combinations.slice(i, i + BATCH_SIZE);
-
+        // Запускаем все батчи параллельно
+        const buildBatchPrompt = (batch: typeof combinations) => {
           const isVideo = session.format !== "static";
-          const batchPrompt = `Ты — копирайтер и режиссёр Meta Ads для ${getBusiness().name}.
+          return `Ты — копирайтер и режиссёр Meta Ads для ${getBusiness().name}.
 
 ${getAiContext()}
 
@@ -124,10 +163,17 @@ CTA-кнопка: [текст + цвет]
 
 ## ПРОМПТ ДЛЯ HIGGSFIELD
 [Готовый промпт на английском для text-to-image, 2–3 предложения: стиль, визуал, настроение]`}`;
+        };
 
+        // Обработать один батч → выплюнуть все брифы в stream
+        const processBatch = async (batch: typeof combinations, batchIdx: number) => {
+          const t0 = Date.now();
+          console.log(`[gen-briefs] batch ${batchIdx} START (${batch.length} combos)`);
           const msgStream = client.messages.stream({
-            model: "claude-opus-4-6",
-            max_tokens: 32000,
+            model: "claude-sonnet-4-6",
+            // fullBrief нужно 4-6k tokens. Берём 8k с запасом, чтобы Claude
+            // не обрезал scenario / shot plan / Higgsfield prompt mid-output.
+            max_tokens: 8000,
             tools: [{
               name: "generate_briefs",
               description: "Сгенерировать адаптированные брифы для каждой комбинации",
@@ -153,16 +199,22 @@ CTA-кнопка: [текст + цвет]
               },
             }],
             tool_choice: { type: "tool", name: "generate_briefs" },
-            messages: [{ role: "user", content: batchPrompt }],
+            messages: [{ role: "user", content: buildBatchPrompt(batch) }],
           });
 
           const msg = await msgStream.finalMessage();
+          console.log(`[gen-briefs] batch ${batchIdx} CLAUDE ok ${Date.now() - t0}ms`);
           const toolUse = msg.content.find(b => b.type === "tool_use") as { type: "tool_use"; input: { briefs: { idx: number; adaptedHook: string; adaptedBody: string; adaptedAngle: string; fullBrief: string }[] } } | undefined;
           const batchResults = toolUse?.input?.briefs ?? [];
+          console.log(`[gen-briefs] batch ${batchIdx} GOT ${batchResults.length} briefs from Claude`);
 
-          for (const result of batchResults) {
-            const combo = batch[result.idx];
-            if (!combo) continue;
+          // Position-based: игнорируем result.idx (Claude может вернуть 1-based
+          // или другой порядок — теряем брифы из-за неправильного индекса).
+          // Доверяем порядку в массиве: batchResults[i] ← batch[i].
+          for (let i = 0; i < batchResults.length; i++) {
+            const combo = batch[i];
+            const result = batchResults[i];
+            if (!combo || !result) continue;
             const brief = {
               personaId: combo.personaId,
               hookId: combo.hookId,
@@ -174,13 +226,60 @@ CTA-кнопка: [текст + цвет]
               adaptedAngle: result.adaptedAngle,
               fullBrief: result.fullBrief,
             };
-            // Send each brief as a newline-delimited JSON line
             controller.enqueue(encoder.encode(JSON.stringify(brief) + "\n"));
             done++;
+            controller.enqueue(encoder.encode(JSON.stringify({ __progress: Math.round((done / combinations.length) * 100) }) + "\n"));
           }
+        };
 
-          // Send progress
-          controller.enqueue(encoder.encode(JSON.stringify({ __progress: Math.round((done / combinations.length) * 100) }) + "\n"));
+        // Concurrent с лимитом 4. С BATCH=1 — нагрузка per-call мала,
+        // 4 параллельных уверенно не упираются в Anthropic TPM.
+        const CONCURRENCY = 4;
+        const errors: string[] = [];
+        const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
+        const wrapped = async (batch: typeof combinations, idx: number) => {
+          for (let attempt = 1; attempt <= 3; attempt++) {
+            try {
+              // Hard timeout 90с на один Claude call — чтобы зависший
+              // запрос не блокировал worker'а и не съедал maxDuration.
+              await Promise.race([
+                processBatch(batch, idx),
+                new Promise<never>((_, rej) =>
+                  setTimeout(() => rej(new Error(`per-call timeout 90s`)), 90_000)
+                ),
+              ]);
+              return;
+            } catch (e) {
+              const msg = e instanceof Error ? e.message : String(e);
+              const isRateLimit = /429|rate.?limit|overload/i.test(msg);
+              if (attempt < 3 && isRateLimit) {
+                console.warn(`[gen-briefs] batch ${idx} attempt ${attempt} rate-limited, retry`);
+                await sleep(2000 * attempt);
+                continue;
+              }
+              console.error(`[gen-briefs] batch ${idx} failed (attempt ${attempt}):`, msg);
+              errors.push(`batch ${idx}: ${msg}`);
+              return;
+            }
+          }
+        };
+        // Простой semaphore без deps
+        const queue = batches.map((b, i) => ({ batch: b, idx: i }));
+        const workers = Array.from({ length: CONCURRENCY }, async () => {
+          while (queue.length > 0) {
+            const item = queue.shift();
+            if (!item) break;
+            await wrapped(item.batch, item.idx);
+          }
+        });
+        await Promise.all(workers);
+
+        if (errors.length > 0) {
+          // Не throw — все успешные брифы уже отправлены клиенту.
+          // Сообщаем об ошибках отдельным JSON-line с __warning.
+          controller.enqueue(encoder.encode(JSON.stringify({
+            __warning: `${errors.length} батч(ей) с ошибками: ${errors.join("; ")}`,
+          }) + "\n"));
         }
       } catch (e) {
         controller.enqueue(encoder.encode(JSON.stringify({ __error: e instanceof Error ? e.message : String(e) }) + "\n"));

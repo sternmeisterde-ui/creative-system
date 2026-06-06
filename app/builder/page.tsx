@@ -1,340 +1,357 @@
 "use client";
-import { useEffect, useRef, useState, Suspense } from "react";
-import { useSearchParams } from "next/navigation";
-import { personaStore, hookStore, bodyStore, angleStore, sessionStore } from "@/lib/store";
-import type { Persona, Hook, Body, Angle, Format, AdFlow, ConstructorSession } from "@/lib/types";
-import { Card, PageHeader, Button, Badge, Empty, SectionTitle } from "@/components/ui";
+import { useEffect, useState, Suspense } from "react";
 import Link from "next/link";
+import type { Format, AdFlow, PackMetadata, PackSlot, PackSlotCategory } from "@/lib/types";
+import { Card, PageHeader, Button, Badge, SectionTitle, Empty } from "@/components/ui";
 
-const FORMATS: { value: Format; label: string }[] = [
-  { value: "ugc", label: "UGC" },
-  { value: "static", label: "Статика" },
-  { value: "animation", label: "Анимация" },
-  { value: "human", label: "Human" },
-  { value: "mixed", label: "Mixed" },
-];
+// ── Constants ────────────────────────────────────────────────────────────────
 
-function ParamSelector<T extends { id: string; name: string; color: string; code?: string | null }>({
-  label, icon, items, selected, onToggle, maxSelect = 3, codeColor,
-}: {
-  label: string; icon: string; items: T[]; selected: string[]; onToggle: (id: string) => void; maxSelect?: number; codeColor?: string;
+const CATEGORY_META: Record<PackSlotCategory, { label: string; icon: string; color: string; pct: number; desc: string }> = {
+  winner_family: { label: "Размножение виннеров (семьи)", icon: "🌱", color: "#6EC8A0", pct: 30, desc: "Берём винеров и меняем 1 параметр" },
+  winner_mix:    { label: "Размножение виннеров (смеси)", icon: "🧬", color: "#6EC8A0", pct: 25, desc: "Свободные комбинации winning P/H/B/A" },
+  discovery:     { label: "Discovery (новые комбинации)", icon: "🔍", color: "#48B8D0", pct: 25, desc: "Непротестированные комбинации с HELPS-кодами" },
+  competitor:    { label: "Конкуренты",                    icon: "🟣", color: "#C490D1", pct: 20, desc: "Из одобренных концептов в /competitors" },
+};
+
+const CODE_COLOR: Record<string, string> = {
+  persona: "#48B8D0", hook: "#C490D1", body: "#6EC8A0", angle: "#FF8B5A",
+};
+
+// ── Slot card ────────────────────────────────────────────────────────────────
+
+function SlotCard({ slot, onRegenerate, regenerating }: {
+  slot: PackSlot;
+  onRegenerate: (slotId: number) => void;
+  regenerating: boolean;
 }) {
+  const meta = CATEGORY_META[slot.category];
   return (
-    <Card>
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
-        <SectionTitle icon={icon}>{label}</SectionTitle>
-        <Badge color={selected.length === maxSelect ? "#6EC8A0" : "#555"}>{selected.length}/{maxSelect}</Badge>
-      </div>
-      {items.length === 0 ? (
-        <div style={{ fontSize: 12, color: "#444", textAlign: "center", padding: "16px 0" }}>
-          Нет элементов. <Link href="/library" style={{ color: "#E8AA42" }}>Добавьте в библиотеку →</Link>
-        </div>
-      ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-          {items.map(item => {
-            const active = selected.includes(item.id);
-            const disabled = !active && selected.length >= maxSelect;
-            return (
-              <div
-                key={item.id}
-                onClick={() => !disabled && onToggle(item.id)}
-                style={{
-                  padding: "10px 14px", borderRadius: 10, cursor: disabled ? "not-allowed" : "pointer",
-                  border: active ? `1.5px solid ${item.color}40` : "1px solid rgba(255,255,255,0.06)",
-                  background: active ? `${item.color}10` : "rgba(255,255,255,0.02)",
-                  opacity: disabled ? 0.35 : 1, transition: "all 0.15s",
-                  display: "flex", alignItems: "center", gap: 10,
-                }}
-              >
-                <div style={{ width: 8, height: 8, borderRadius: "50%", background: active ? item.color : "#333", flexShrink: 0 }} />
-                {item.code && codeColor && (
-                  <span style={{ fontSize: 10, fontWeight: 700, color: codeColor, background: `${codeColor}18`, padding: "1px 6px", borderRadius: 4, fontFamily: "monospace", flexShrink: 0 }}>{item.code}</span>
-                )}
-                <span style={{ fontSize: 12, fontWeight: active ? 700 : 400, color: active ? "#EEE" : "#888", flex: 1 }}>{item.name}</span>
-                {active && <span style={{ fontSize: 10, color: item.color, fontWeight: 700 }}>✓</span>}
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </Card>
-  );
-}
-
-function ConstructorContent() {
-  const searchParams = useSearchParams();
-  const autoRecommend = searchParams.get("autoRecommend") === "1";
-  const urlFlow = searchParams.get("flow") as AdFlow | null;
-  const reason = searchParams.get("reason");
-  const autoTriggered = useRef(false);
-
-  const [personas, setPersonas] = useState<Persona[]>([]);
-  const [hooks, setHooks] = useState<Hook[]>([]);
-  const [bodies, setBodies] = useState<Body[]>([]);
-  const [angles, setAngles] = useState<Angle[]>([]);
-  const [sessions, setSessions] = useState<ConstructorSession[]>([]);
-
-  const [selected, setSelected] = useState({ personas: [] as string[], hooks: [] as string[], bodies: [] as string[], angles: [] as string[] });
-  const [format, setFormat] = useState<Format>("ugc");
-  const [flow, setFlow] = useState<AdFlow>(urlFlow ?? "com");
-  const [sessionName, setSessionName] = useState("");
-  const [aiLoading, setAiLoading] = useState(false);
-  const [aiReasoning, setAiReasoning] = useState<string | null>(null);
-  const [aiError, setAiError] = useState<string | null>(null);
-
-  useEffect(() => {
-    const load = async () => {
-      const [p, h, b, a, s] = await Promise.all([
-        personaStore.getAll(), hookStore.getAll(), bodyStore.getAll(), angleStore.getAll(), sessionStore.getAll(),
-      ]);
-      setPersonas(p); setHooks(h); setBodies(b); setAngles(a);
-      setSessions(s.slice().reverse());
-
-      if (autoRecommend && !autoTriggered.current) {
-        autoTriggered.current = true;
-        const currentFlow = urlFlow ?? "com";
-        setAiLoading(true);
-        setAiReasoning(null);
-        setAiError(null);
-        try {
-          const res = await fetch("/api/ai/recommend", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ personas: p, hooks: h, bodies: b, angles: a, flow: currentFlow }),
-          });
-          const data = await res.json();
-          if (data.error) { setAiError(data.error); return; }
-          if (data.personas && data.hooks && data.bodies && data.angles) {
-            setSelected({ personas: data.personas, hooks: data.hooks, bodies: data.bodies, angles: data.angles });
-            if (data.reasoning) setAiReasoning(data.reasoning);
-          }
-        } catch (e) {
-          setAiError(e instanceof Error ? e.message : String(e));
-        } finally {
-          setAiLoading(false);
-        }
-      }
-    };
-    load();
-  }, []);
-
-  const toggle = (type: keyof typeof selected) => (id: string) => {
-    setSelected(prev => {
-      const arr = prev[type];
-      return { ...prev, [type]: arr.includes(id) ? arr.filter(x => x !== id) : [...arr, id] };
-    });
-  };
-
-  const total = selected.personas.length * selected.hooks.length * selected.bodies.length * selected.angles.length;
-
-  const handleAiRecommend = async () => {
-    setAiLoading(true);
-    setAiReasoning(null);
-    setAiError(null);
-    try {
-      const [allPersonas, allHooks, allBodies, allAngles] = await Promise.all([
-        personaStore.getAll(), hookStore.getAll(), bodyStore.getAll(), angleStore.getAll(),
-      ]);
-      const res = await fetch("/api/ai/recommend", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ personas: allPersonas, hooks: allHooks, bodies: allBodies, angles: allAngles, flow }),
-      });
-      const data = await res.json();
-      if (data.error) { setAiError(data.error); return; }
-      if (data.personas && data.hooks && data.bodies && data.angles) {
-        setSelected({ personas: data.personas, hooks: data.hooks, bodies: data.bodies, angles: data.angles });
-        if (data.reasoning) setAiReasoning(data.reasoning);
-      }
-    } catch (e) {
-      setAiError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setAiLoading(false);
-    }
-  };
-
-  const handleSave = async () => {
-    if (!sessionName.trim() || total === 0) return;
-    const session = await sessionStore.save({
-      name: sessionName,
-      flow,
-      selectedPersonas: selected.personas,
-      selectedHooks: selected.hooks,
-      selectedBodies: selected.bodies,
-      selectedAngles: selected.angles,
-      format,
-      totalCombinations: total,
-      status: "draft",
-    });
-    setSessions((await sessionStore.getAll()).slice().reverse());
-    setSessionName("");
-    alert(`Сессия "${session.name}" создана! Перейдите в Сценарии для написания базовых сценариев.`);
-  };
-
-  return (
-    <div>
-      <PageHeader
-        title="Конструктор"
-        subtitle="Выберите параметры для матрицы креативов"
-        action={
-          <Button variant="secondary" onClick={handleAiRecommend} disabled={aiLoading}>
-            {aiLoading ? "⏳ Загрузка..." : "✨ AI рекомендует"}
-          </Button>
-        }
-      />
-
-      {/* Pack dying banner */}
-      {reason === "pack_dying" && (
-        <div style={{
-          marginBottom: 16, padding: "14px 18px", borderRadius: 10,
-          background: "rgba(217,107,107,0.08)", border: "1px solid rgba(217,107,107,0.3)",
-          display: "flex", alignItems: "center", gap: 14,
-        }}>
-          <div style={{ fontSize: 22 }}>🔴</div>
-          <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: "#D96B6B", marginBottom: 2 }}>
-              Пак умирает — время запустить новый производственный цикл
-            </div>
-            <div style={{ fontSize: 11, color: "#888" }}>
-              AI уже составил рекомендацию на основе текущей аналитики. Проверьте и скорректируйте при необходимости.
-            </div>
-          </div>
-          {aiLoading && (
-            <div style={{ fontSize: 11, color: "#D96B6B", marginLeft: "auto", whiteSpace: "nowrap" }}>
-              ⏳ AI анализирует...
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Flow */}
-      <Card style={{ marginBottom: 16 }}>
-        <SectionTitle icon="🌐">Поток</SectionTitle>
-        <div style={{ display: "flex", gap: 8 }}>
-          {([["com", "Коммерческий (COM)", "#E8AA42"], ["gov", "Госники (GOV)", "#48B8D0"]] as const).map(([v, label, color]) => (
-            <button key={v} onClick={() => setFlow(v)} style={{
-              padding: "8px 20px", borderRadius: 8, fontFamily: "inherit", fontSize: 12, fontWeight: flow === v ? 700 : 400,
-              cursor: "pointer", border: flow === v ? `1.5px solid ${color}40` : "1px solid rgba(255,255,255,0.06)",
-              background: flow === v ? `${color}12` : "rgba(255,255,255,0.02)", color: flow === v ? color : "#666",
-            }}>
-              {label}
-            </button>
-          ))}
-        </div>
-      </Card>
-
-      {/* Format */}
-      <Card style={{ marginBottom: 16 }}>
-        <SectionTitle icon="🎬">Формат</SectionTitle>
-        <div style={{ display: "flex", gap: 8 }}>
-          {FORMATS.map(f => (
-            <button key={f.value} onClick={() => setFormat(f.value)} style={{
-              padding: "8px 16px", borderRadius: 8, fontFamily: "inherit", fontSize: 12, fontWeight: format === f.value ? 700 : 400,
-              cursor: "pointer", border: format === f.value ? "1.5px solid rgba(232,170,66,0.4)" : "1px solid rgba(255,255,255,0.06)",
-              background: format === f.value ? "rgba(232,170,66,0.1)" : "rgba(255,255,255,0.02)", color: format === f.value ? "#E8AA42" : "#666",
-            }}>
-              {f.label}
-            </button>
-          ))}
-        </div>
-      </Card>
-
-      {/* AI reasoning */}
-      {aiReasoning && (
-        <Card style={{ marginBottom: 16, background: "rgba(110,200,160,0.04)", border: "1px solid rgba(110,200,160,0.2)" }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 12 }}>
-            <div style={{ fontSize: 18, flexShrink: 0 }}>🧠</div>
-            <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: "#6EC8A0", textTransform: "uppercase", letterSpacing: 1, marginBottom: 6 }}>
-                AI объясняет выбор
-              </div>
-              <div style={{ fontSize: 13, color: "#CCC", lineHeight: 1.7 }}>{aiReasoning}</div>
-            </div>
-            <button onClick={() => setAiReasoning(null)} style={{ background: "none", border: "none", color: "#555", cursor: "pointer", fontSize: 16, padding: 0 }}>✕</button>
-          </div>
-        </Card>
-      )}
-      {aiError && (
-        <Card style={{ marginBottom: 16, background: "rgba(217,107,107,0.04)", border: "1px solid rgba(217,107,107,0.2)" }}>
-          <div style={{ fontSize: 12, color: "#D96B6B" }}>Ошибка рекомендации: {aiError}</div>
-        </Card>
-      )}
-
-      {/* Parameter selectors */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-        <ParamSelector label="Персоны" icon="👤" items={personas} selected={selected.personas} onToggle={toggle("personas")} codeColor="#48B8D0" />
-        <ParamSelector label="Хуки" icon="🎣" items={hooks} selected={selected.hooks} onToggle={toggle("hooks")} codeColor="#C490D1" />
-        <ParamSelector label="Боди" icon="📝" items={bodies} selected={selected.bodies} onToggle={toggle("bodies")} codeColor="#6EC8A0" />
-        <ParamSelector label="Энглы" icon="🎯" items={angles} selected={selected.angles} onToggle={toggle("angles")} codeColor="#FF8B5A" />
+    <div style={{
+      padding: 12, borderRadius: 10,
+      border: `1px solid ${meta.color}30`,
+      background: `${meta.color}08`,
+      display: "flex", flexDirection: "column", gap: 8,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+        <span style={{ fontSize: 10, fontWeight: 700, color: meta.color, textTransform: "uppercase", letterSpacing: 0.5 }}>
+          #{slot.slotId}
+        </span>
+        <button
+          onClick={() => onRegenerate(slot.slotId)}
+          disabled={regenerating}
+          style={{
+            fontSize: 10, padding: "2px 8px", borderRadius: 4, cursor: regenerating ? "wait" : "pointer",
+            background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)",
+            color: regenerating ? "#666" : "#AAA", fontFamily: "inherit",
+          }}
+        >
+          {regenerating ? "⏳" : "🔄 регенерить"}
+        </button>
       </div>
 
-      {/* Summary */}
-      <Card style={{ background: total > 0 ? "rgba(232,170,66,0.04)" : undefined, border: total > 0 ? "1px solid rgba(232,170,66,0.15)" : undefined, marginBottom: 24 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 20 }}>
-          <div>
-            <div style={{ fontSize: 32, fontWeight: 900, color: total > 0 ? "#E8AA42" : "#333" }}>{total}</div>
-            <div style={{ fontSize: 11, color: "#555" }}>комбинаций</div>
-          </div>
-          <div style={{ flex: 1, fontSize: 13, color: "#666" }}>
-            {selected.personas.length}п × {selected.hooks.length}х × {selected.bodies.length}б × {selected.angles.length}э = {total} уникальных вариаций
-            {total > 0 && <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>= {selected.personas.length + selected.hooks.length + selected.bodies.length + selected.angles.length} базовых сценариев → {total} адаптированных брифов</div>}
-          </div>
-          {total > 0 && (
-            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
-              <input
-                value={sessionName}
-                onChange={e => setSessionName(e.target.value)}
-                placeholder="Название сессии..."
-                style={{ width: 200 }}
-              />
-              <Button variant="primary" onClick={handleSave} disabled={!sessionName.trim()}>
-                💾 Сохранить сессию
-              </Button>
-            </div>
-          )}
-        </div>
-      </Card>
+      <div style={{ display: "flex", gap: 4, flexWrap: "wrap" }}>
+        {(["persona", "hook", "body", "angle"] as const).map(t => {
+          const code = slot.codes[t];
+          if (!code) return null;
+          return (
+            <span key={t} style={{
+              fontFamily: "monospace", fontSize: 11, fontWeight: 700,
+              color: CODE_COLOR[t], background: `${CODE_COLOR[t]}18`,
+              padding: "2px 6px", borderRadius: 4,
+            }}>{code}</span>
+          );
+        })}
+      </div>
 
-      {/* Sessions history */}
-      {sessions.length > 0 && (
-        <div>
-          <SectionTitle icon="📂">Сохранённые сессии</SectionTitle>
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {sessions.map(s => (
-              <Card key={s.id}>
-                <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: "#DDD", marginBottom: 4 }}>{s.name}</div>
-                    <div style={{ fontSize: 11, color: "#555" }}>
-                      {s.selectedPersonas.length}п × {s.selectedHooks.length}х × {s.selectedBodies.length}б × {s.selectedAngles.length}э = {s.totalCombinations} комб.
-                    </div>
-                  </div>
-                  <Badge color={s.status === "done" ? "#6EC8A0" : s.status === "generating" ? "#E8AA42" : "#555"}>
-                    {s.status === "done" ? "Готово" : s.status === "generating" ? "Генерация..." : s.status === "scenarios" ? "Сценарии" : "Черновик"}
-                  </Badge>
-                  <Badge color={(s.flow ?? "com") === "com" ? "#E8AA42" : "#48B8D0"}>{(s.flow ?? "com").toUpperCase()}</Badge>
-                  <Badge color="#555">{s.format.toUpperCase()}</Badge>
-                  <Link href={`/scenarios?session=${s.id}`}>
-                    <Button size="sm" variant="primary">Сценарии →</Button>
-                  </Link>
-                </div>
-              </Card>
-            ))}
-          </div>
+      <div style={{ fontSize: 11, color: "#888", lineHeight: 1.5 }}>{slot.rationale}</div>
+
+      {slot.basedOnAd && (
+        <div style={{ fontSize: 10, color: "#555" }}>
+          ← <span style={{ color: "#888", fontFamily: "monospace" }}>{slot.basedOnAd}</span>
+          {slot.variedParam && <span> · меняем {slot.variedParam}</span>}
         </div>
       )}
-
-      {personas.length === 0 && hooks.length === 0 && (
-        <Empty icon="📚" text="Библиотека пуста. Сначала добавьте параметры в библиотеку." />
+      {slot.fromWinners && slot.fromWinners.length > 0 && (
+        <div style={{ fontSize: 10, color: "#555" }}>← из винеров: {slot.fromWinners.join(", ")}</div>
+      )}
+      {slot.helpsCodes && slot.helpsCodes.length > 0 && (
+        <div style={{ fontSize: 10, color: "#555" }}>HELPS: {slot.helpsCodes.join(", ")}</div>
+      )}
+      {slot.newCodesCreated && slot.newCodesCreated.length > 0 && (
+        <div style={{ fontSize: 10, color: "#FF8B5A" }}>+ новые коды: {slot.newCodesCreated.join(", ")}</div>
       )}
     </div>
   );
 }
 
-export default function ConstructorPage() {
+// ── Group section ────────────────────────────────────────────────────────────
+
+function GroupSection({ category, slots, onRegenerate, regenerating }: {
+  category: PackSlotCategory;
+  slots: PackSlot[];
+  onRegenerate: (slotId: number) => void;
+  regenerating: number | null;
+}) {
+  const meta = CATEGORY_META[category];
+  if (slots.length === 0) return null;
+
   return (
-    <Suspense fallback={<div style={{ color: "#555", padding: 40 }}>Загрузка...</div>}>
-      <ConstructorContent />
+    <Card style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 14 }}>
+        <SectionTitle icon={meta.icon} color={meta.color}>{meta.label}</SectionTitle>
+        <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+          <Badge color={meta.color}>{slots.length} шт · {meta.pct}%</Badge>
+        </div>
+      </div>
+      <div style={{ fontSize: 11, color: "#555", marginBottom: 12 }}>{meta.desc}</div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
+        {slots.map(s => (
+          <SlotCard key={s.slotId} slot={s} onRegenerate={onRegenerate} regenerating={regenerating === s.slotId} />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+// ── History row ──────────────────────────────────────────────────────────────
+
+interface HistoryRow {
+  id: string;
+  name: string;
+  flow: AdFlow | null;
+  format: Format;
+  generated_at: string | null;
+  pack_size: number;
+  pack_metadata: PackMetadata | null;
+}
+
+// ── Main ──────────────────────────────────────────────────────────────────────
+
+function BuilderContent() {
+  const [flow, setFlow] = useState<AdFlow>("com");
+  const [format, setFormat] = useState<Format>("ugc");
+  const [packSize, setPackSize] = useState(20);
+  const [generating, setGenerating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
+  const [currentPack, setCurrentPack] = useState<PackMetadata | null>(null);
+  const [regenSlot, setRegenSlot] = useState<number | null>(null);
+
+  const [history, setHistory] = useState<HistoryRow[]>([]);
+
+  useEffect(() => {
+    fetch("/api/pack/history").then(r => r.ok ? r.json() : null).then(d => {
+      if (d?.sessions) setHistory(d.sessions);
+    }).catch(() => {});
+  }, [currentSessionId]);
+
+  const handleGenerate = async () => {
+    setError(null);
+    setGenerating(true);
+    setCurrentPack(null);
+    setCurrentSessionId(null);
+    try {
+      const res = await fetch("/api/pack/generate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ flow, format, packSize }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error ?? `HTTP ${res.status}`);
+      } else {
+        setCurrentSessionId(data.sessionId);
+        setCurrentPack(data.packMetadata);
+      }
+    } catch (e) {
+      setError(`Ошибка сети: ${(e as Error).message}`);
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleRegenerateSlot = async (slotId: number) => {
+    if (!currentSessionId) return;
+    setRegenSlot(slotId);
+    try {
+      const res = await fetch("/api/pack/regenerate-slot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: currentSessionId, slotId }),
+      });
+      const data = await res.json();
+      if (res.ok && data.slot) {
+        setCurrentPack(prev => prev ? { ...prev, slots: prev.slots.map(s => s.slotId === slotId ? data.slot : s) } : prev);
+      } else {
+        alert(data.error ?? `HTTP ${res.status}`);
+      }
+    } catch (e) {
+      alert(`Ошибка сети: ${(e as Error).message}`);
+    } finally {
+      setRegenSlot(null);
+    }
+  };
+
+  const loadHistoryPack = (h: HistoryRow) => {
+    if (!h.pack_metadata) return;
+    setCurrentSessionId(h.id);
+    setCurrentPack(h.pack_metadata);
+  };
+
+  const slotsByCategory = (cat: PackSlotCategory) =>
+    currentPack?.slots.filter(s => s.category === cat) ?? [];
+
+  return (
+    <div>
+      <PageHeader
+        title="Конструктор"
+        subtitle="Генератор пака на 20 креативов · 55% размножение + 25% discovery + 20% конкуренты"
+      />
+
+      {/* Controls */}
+      <Card style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", gap: 20, alignItems: "center", flexWrap: "wrap" }}>
+          <div>
+            <div style={{ fontSize: 10, color: "#555", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Поток</div>
+            <div style={{ display: "flex", gap: 6 }}>
+              {(["com", "gov"] as const).map(f => (
+                <button key={f} onClick={() => setFlow(f)} style={{
+                  padding: "8px 18px", borderRadius: 8, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                  fontWeight: flow === f ? 700 : 400,
+                  border: flow === f ? "1.5px solid rgba(232,170,66,0.4)" : "1px solid rgba(255,255,255,0.06)",
+                  background: flow === f ? "rgba(232,170,66,0.1)" : "rgba(255,255,255,0.02)",
+                  color: flow === f ? "#E8AA42" : "#666",
+                }}>{f.toUpperCase()}</button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 10, color: "#555", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Формат</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              {(["ugc", "static", "animation", "human", "mixed"] as const).map(fmt => (
+                <button key={fmt} onClick={() => setFormat(fmt)} style={{
+                  padding: "8px 14px", borderRadius: 8, fontSize: 11, cursor: "pointer", fontFamily: "inherit",
+                  fontWeight: format === fmt ? 700 : 400,
+                  border: format === fmt ? "1.5px solid rgba(72,184,208,0.4)" : "1px solid rgba(255,255,255,0.06)",
+                  background: format === fmt ? "rgba(72,184,208,0.1)" : "rgba(255,255,255,0.02)",
+                  color: format === fmt ? "#48B8D0" : "#666",
+                }}>{fmt}</button>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 10, color: "#555", textTransform: "uppercase", letterSpacing: 0.5, marginBottom: 6 }}>Размер пака</div>
+            <div style={{ display: "flex", gap: 4 }}>
+              {[5, 10, 20].map(n => (
+                <button key={n} onClick={() => setPackSize(n)} style={{
+                  padding: "8px 14px", borderRadius: 8, fontSize: 12, cursor: "pointer", fontFamily: "inherit",
+                  fontWeight: packSize === n ? 700 : 400,
+                  border: packSize === n ? "1.5px solid rgba(110,200,160,0.4)" : "1px solid rgba(255,255,255,0.06)",
+                  background: packSize === n ? "rgba(110,200,160,0.1)" : "rgba(255,255,255,0.02)",
+                  color: packSize === n ? "#6EC8A0" : "#666",
+                }}>{n}</button>
+              ))}
+            </div>
+          </div>
+
+          <div style={{ marginLeft: "auto" }}>
+            <Button onClick={handleGenerate} disabled={generating}>
+              {generating ? "⏳ Генерация… (1-3 мин)" : `🚀 Сгенерировать пак (${packSize})`}
+            </Button>
+          </div>
+        </div>
+      </Card>
+
+      {error && (
+        <Card style={{ marginBottom: 16, borderColor: "rgba(217,107,107,0.3)" }}>
+          <div style={{ fontSize: 12, color: "#D96B6B" }}>⚠️ {error}</div>
+        </Card>
+      )}
+
+      {/* Current pack */}
+      {currentPack && (
+        <>
+          {/* Summary */}
+          <Card style={{ marginBottom: 16 }}>
+            <div style={{ display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap" }}>
+              <div>
+                <div style={{ fontSize: 22, fontWeight: 800, color: "#EEE" }}>{currentPack.slots.length}</div>
+                <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: 0.5 }}>Креативов</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#6EC8A0" }}>{currentPack.data_snapshot.winners}</div>
+                <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: 0.5 }}>Винеров в архиве</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#FF8B5A" }}>{currentPack.data_snapshot.fake_winners}</div>
+                <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: 0.5 }}>Fake winners</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#D96B6B" }}>{currentPack.data_snapshot.losers}</div>
+                <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: 0.5 }}>Лузеров</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 14, fontWeight: 700, color: "#C490D1" }}>{currentPack.data_snapshot.approved_competitors}</div>
+                <div style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: 0.5 }}>Approved конкурентов</div>
+              </div>
+              {currentPack.cold_start && (
+                <Badge color="#E8AA42">COLD START</Badge>
+              )}
+              <div style={{ marginLeft: "auto" }}>
+                <Link href={`/briefs?session=${currentSessionId}`}>
+                  <Button>→ Открыть в /briefs</Button>
+                </Link>
+              </div>
+            </div>
+          </Card>
+
+          {/* Sections */}
+          <GroupSection category="winner_family" slots={slotsByCategory("winner_family")} onRegenerate={handleRegenerateSlot} regenerating={regenSlot} />
+          <GroupSection category="winner_mix"    slots={slotsByCategory("winner_mix")}    onRegenerate={handleRegenerateSlot} regenerating={regenSlot} />
+          <GroupSection category="discovery"     slots={slotsByCategory("discovery")}     onRegenerate={handleRegenerateSlot} regenerating={regenSlot} />
+          <GroupSection category="competitor"    slots={slotsByCategory("competitor")}    onRegenerate={handleRegenerateSlot} regenerating={regenSlot} />
+        </>
+      )}
+
+      {/* History */}
+      <Card style={{ marginTop: 24 }}>
+        <SectionTitle icon="📜">История паков</SectionTitle>
+        {history.length === 0 ? (
+          <Empty icon="🌱" text="Паков ещё не было. Сгенерируй первый." />
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginTop: 12 }}>
+            {history.map(h => (
+              <div key={h.id} onClick={() => loadHistoryPack(h)} style={{
+                padding: "10px 12px", borderRadius: 8, cursor: "pointer",
+                background: currentSessionId === h.id ? "rgba(232,170,66,0.08)" : "rgba(255,255,255,0.02)",
+                border: currentSessionId === h.id ? "1px solid rgba(232,170,66,0.3)" : "1px solid rgba(255,255,255,0.04)",
+                display: "flex", alignItems: "center", gap: 12,
+              }}>
+                <span style={{ fontSize: 12, color: "#DDD", fontWeight: 600 }}>{h.name}</span>
+                <Badge color={(h.flow ?? "com") === "com" ? "#E8AA42" : "#48B8D0"}>{(h.flow ?? "com").toUpperCase()}</Badge>
+                <Badge color="#888">{h.format}</Badge>
+                <span style={{ fontSize: 11, color: "#666" }}>{h.pack_size} крео</span>
+                {h.pack_metadata?.cold_start && <Badge color="#E8AA42">cold start</Badge>}
+                <span style={{ marginLeft: "auto", fontSize: 10, color: "#444" }}>
+                  {h.generated_at ? new Date(h.generated_at).toLocaleString("ru-RU") : "—"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+    </div>
+  );
+}
+
+export default function BuilderPage() {
+  return (
+    <Suspense fallback={<div style={{ padding: 60, color: "#444", textAlign: "center" }}>Загружаем…</div>}>
+      <BuilderContent />
     </Suspense>
   );
 }

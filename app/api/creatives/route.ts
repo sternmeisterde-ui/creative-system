@@ -192,37 +192,61 @@ export async function GET() {
     );
   }
 
-  // Auto-submit next lipsync scene (1 at a time — Sync.so free plan concurrency = 1)
+  // Auto-submit next lipsync scene — ГЛОБАЛЬНАЯ конкурентность = 1 (Sync.so free plan).
+  // Только один lipsync-job в полёте across ВСЕХ групп одновременно.
   const { data: lipsyncGroups } = await supabase
     .from("creative_scene_groups")
     .select("id")
     .eq("status", "lipsync");
 
   if (lipsyncGroups?.length) {
+    const groupIds = lipsyncGroups.map(g => g.id);
+
+    // Сколько job'ов сейчас в полёте глобально?
+    const { count: globalInflight } = await supabase
+      .from("creative_generations")
+      .select("id", { count: "exact", head: true })
+      .eq("status", "lipsync")
+      .not("lipsync_job_id", "is", null)
+      .in("scene_group_id", groupIds);
+
+    // Закрываем группы, у которых не осталось сцен для lipsync (и нет in-flight)
     await Promise.all(lipsyncGroups.map(async (group) => {
-      // Count scenes currently pending lipsync
       const { count: pendingCount } = await supabase
         .from("creative_generations")
         .select("id", { count: "exact", head: true })
         .eq("scene_group_id", group.id)
         .eq("status", "lipsync");
+      if (pendingCount) return;
 
-      if (pendingCount) return; // Still waiting — don't submit another
-
-      // Find next scene that needs lipsync
-      const { data: nextScene } = await supabase
+      const { count: remaining } = await supabase
         .from("creative_generations")
-        .select("id, result_url, audio_url")
+        .select("id", { count: "exact", head: true })
         .eq("scene_group_id", group.id)
         .eq("status", "done")
         .not("audio_url", "is", null)
+        .is("lipsynced_url", null);
+
+      if (!remaining) {
+        await supabase.from("creative_scene_groups").update({ status: "done" }).eq("id", group.id);
+      }
+    }));
+
+    // Сабмитим РОВНО ОДНУ сцену, только если ничего не в полёте
+    if (!globalInflight) {
+      const { data: nextScene } = await supabase
+        .from("creative_generations")
+        .select("id, result_url, audio_url")
+        .in("scene_group_id", groupIds)
+        .eq("status", "done")
+        .not("audio_url", "is", null)
         .is("lipsynced_url", null)
+        .order("scene_group_id", { ascending: true })
         .order("scene_index", { ascending: true })
         .limit(1)
         .maybeSingle();
 
       if (nextScene) {
-        // Submit next scene
         try {
           const ctrl = new AbortController();
           const timer = setTimeout(() => ctrl.abort(), 10000);
@@ -253,11 +277,8 @@ export async function GET() {
             }
           }
         } catch { /* silently skip, retry next poll */ }
-      } else {
-        // No more scenes need lipsync — group is done
-        await supabase.from("creative_scene_groups").update({ status: "done" }).eq("id", group.id);
       }
-    }));
+    }
   }
 
   // Poll Creatomate for stitching groups

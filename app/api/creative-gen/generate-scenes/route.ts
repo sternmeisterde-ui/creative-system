@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase";
 import { findModel, DEFAULT_VIDEO_MODEL } from "@/lib/higgsfield-models";
+import { brief as briefConfig } from "@/lib/brief";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -18,27 +19,37 @@ interface SceneData {
 }
 
 async function extractScenes(fullBrief: string): Promise<SceneData[]> {
+  // ВСЁ на языке brief.language (включая prompts для Kling).
+  // Kling 2.6 Pro обрабатывает русский, но менее стабильно — пользователь готов на компромисс.
+  const lang = briefConfig.business.language;
+  const dialogueRules = briefConfig.brand_voice.dialogue_rules ?? [];
+  const dialogueBlock = dialogueRules.length > 0
+    ? `\nПравила диалогов:\n${dialogueRules.map(r => `  - ${r}`).join("\n")}`
+    : "";
+
   const msg = await anthropic.messages.create({
     model: "claude-sonnet-4-6",
     max_tokens: 2000,
     messages: [{
       role: "user",
-      content: `Extract video scenes from this creative brief. Return ONLY a valid JSON array — no markdown, no explanation.
+      content: `Извлеки сцены из креативного брифа. Верни ТОЛЬКО валидный JSON-массив без markdown.
 
-Each element: {"index": number, "description": "short Russian scene description", "prompt": "English Kling prompt max 400 chars"}
+Каждый элемент: {"index": number, "description": "короткое описание сцены", "prompt": "Kling-промпт на языке '${lang}' максимум 400 символов"}
 
-Kling prompt rules:
-- iPhone 15 Pro Max aesthetic: handheld, no gimbal, natural grain, 9:16 vertical
-- Describe: character appearance/emotion, location, action, lighting, camera movement
-- Russian dialogue written phonetically in English (no dashes, no text overlay in video)
-- No on-screen text, no supers
+Правила Kling-промптов (ВСЁ на языке '${lang}', никаких других языков):
+- Эстетика iPhone 15 Pro Max: handheld, без gimbal, естественный grain, 9:16 vertical
+- Опиши: внешность/эмоцию персонажа, локацию, действие, свет, движение камеры
+- Длительность 10 секунд
+- Диалог (если есть) — на языке '${lang}', без тире, без экранного текста
+- Никакого on-screen-текста, никаких subtitle/supers${dialogueBlock}
 
-Extract scenes from the ПОКАДРОВЫЙ ПЛАН or СЦЕНАРИЙ section. Generate a Kling prompt for each scene.
+Извлекай сцены из секции ПОКАДРОВЫЙ ПЛАН или СЦЕНАРИЙ. На каждую сцену — один Kling-промпт.
+До 6 сцен (бриф может покрывать 30-60 сек видео).
 
-Brief:
+Бриф:
 ${fullBrief}
 
-Return ONLY: [{"index":1,"description":"...","prompt":"..."},...]`,
+Верни ТОЛЬКО: [{"index":1,"description":"...","prompt":"..."},...]`,
     }],
   });
 

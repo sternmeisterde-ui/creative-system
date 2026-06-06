@@ -55,8 +55,17 @@ export async function POST(req: NextRequest) {
   if (!firstScene) return NextResponse.json({ ok: true, succeeded: 0, message: "Все сцены уже обработаны" });
 
   // Submit only 1 scene — the poller will auto-submit next scenes one-by-one
-  // (Sync.so free plan allows only 1 concurrent job)
-  const jobId = await submitLipsync(firstScene.result_url as string, firstScene.audio_url as string);
+  // (Sync.so free plan allows only 1 concurrent job).
+  // Устойчиво: при ошибке Sync.so (rate-limit/транзиент) НЕ валим 500 —
+  // возвращаем ok:false, поллер повторит сцену в следующем тике.
+  let jobId: string;
+  try {
+    jobId = await submitLipsync(firstScene.result_url as string, firstScene.audio_url as string);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return NextResponse.json({ ok: false, succeeded: 0, retryable: true, error: message });
+  }
+
   await supabase.from("creative_generations").update({
     lipsync_job_id: jobId,
     status: "lipsync",

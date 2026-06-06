@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Шаблон LaunchAgent для авто-запуска montage-worker на Mac.
+     Установка: скопировать в ~/Library/LaunchAgents/ и заменить пути под свою машину
+     (WorkingDirectory, путь к node в ProgramArguments, домашние пути в логах).
+     Затем: launchctl bootstrap gui/$(id -u) ~/Library/LaunchAgents/de.sternmeister.montage-worker.plist
+     См. scripts/launchd/README.md -->
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>de.sternmeister.montage-worker</string>
+
+    <key>ProgramArguments</key>
+    <array>
+        <string>/usr/local/bin/node</string>
+        <string>scripts/montage-worker.mjs</string>
+    </array>
+
+    <key>WorkingDirectory</key>
+    <string>/Users/nikitamikhailov/Documents/SternMeister/creative-system</string>
+
+    <!-- launchd даёт минимальный PATH; ffmpeg/ffprobe (/opt/homebrew) и python3 ищутся по PATH -->
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>PATH</key>
+        <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+    </dict>
+
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <true/>
+    <key>ThrottleInterval</key>
+    <integer>30</integer>
+
+    <key>StandardOutPath</key>
+    <string>/Users/nikitamikhailov/Library/Logs/montage-worker.out.log</string>
+    <key>StandardErrorPath</key>
+    <string>/Users/nikitamikhailov/Library/Logs/montage-worker.err.log</string>
+</dict>
+</plist>

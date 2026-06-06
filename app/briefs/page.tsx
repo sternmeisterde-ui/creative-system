@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useState, Suspense } from "react";
+import { useEffect, useRef, useState, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { personaStore, hookStore, bodyStore, angleStore, sessionStore, scenarioStore, briefStore, ruleStore } from "@/lib/store";
 import type { Brief, BriefStatus, ConstructorSession } from "@/lib/types";
@@ -334,26 +334,11 @@ function BriefCard({
           )}
         </div>
 
-        {/* Actions */}
+        {/* Actions — только collapse, без approval gate */}
         <div style={{ display: "flex", flexDirection: "column", gap: 6, flexShrink: 0 }}>
           <Button size="sm" onClick={() => setExpanded(!expanded)}>
             {expanded ? "Свернуть" : "Открыть"}
           </Button>
-          {status !== "approved" && (
-            <Button size="sm" variant="primary" onClick={() => onApprove(brief.id)} disabled={busy}>
-              ✓ Одобрить
-            </Button>
-          )}
-          {status !== "needs_revision" && (
-            <Button size="sm" onClick={() => onRevision(brief.id)} disabled={busy}>
-              ✏ Правки
-            </Button>
-          )}
-          {status !== "pending" && (
-            <Button size="sm" onClick={() => onApprove(brief.id)} disabled={busy} style={{ opacity: 0.5 }}>
-              ↺ Сброс
-            </Button>
-          )}
         </div>
       </div>
     </Card>
@@ -399,12 +384,7 @@ function BriefsContent() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [revisionFor, setRevisionFor] = useState<string | null>(null);
-  const [publishing, setPublishing] = useState(false);
   const [published, setPublished] = useState<{ adName: string }[]>([]);
-
-  // Batch navigation
-  const [batchPage, setBatchPage] = useState(0);
-  const [filterStatus, setFilterStatus] = useState<BriefStatus | "all">("all");
 
   const [personas, setPersonas] = useState<Record<string, string>>({});
   const [hooks, setHooks] = useState<Record<string, string>>({});
@@ -432,10 +412,65 @@ function BriefsContent() {
       (await angleStore.getAll()).forEach(a => { aMap[a.id] = a.name; });
       setPersonas(pMap); setHooks(hMap); setBodies(bMap); setAngles(aMap);
 
-      setBriefs(await briefStore.getBySession(sessionId));
+      const existingBriefs = await briefStore.getBySession(sessionId);
+      setBriefs(existingBriefs);
+
+      // AUTO-TRIGGER: если сессия пакетная и брифов ещё нет — стартуем генерацию сразу.
+      // Никакой кнопки «генерировать», система делает всё сама.
+      const isPack = !!(s as ConstructorSession).packMetadata;
+      if (isPack && existingBriefs.length === 0 && !generating) {
+        // Не дёргаем напрямую — небольшая задержка чтобы UI отрисовался
+        setTimeout(() => { autoTriggerRef.current = true; }, 100);
+      }
     };
     load();
   }, [sessionId]);
+
+  // Ref-флаг для автостарта (избегаем гонок React strict mode)
+  const autoTriggerRef = useRef(false);
+  const pollingRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [pipelineStatus, setPipelineStatus] = useState<string | null>(null);
+
+  // Polling /api/pack/auto-advance — двигает все in-progress scene_groups
+  // через стадии Kling→voice→lipsync→stitch. Останавливается когда idle.
+  const startPipelinePolling = () => {
+    if (pollingRef.current) return;
+    setPipelineStatus("Pipeline запущен — Kling/voice/lipsync/stitch в работе");
+    const tick = async () => {
+      try {
+        const r = await fetch("/api/pack/auto-advance", { method: "POST" });
+        const d = await r.json();
+        if (d.idle) {
+          setPipelineStatus("✅ Pipeline завершён — все креативы готовы");
+          if (pollingRef.current) { clearInterval(pollingRef.current); pollingRef.current = null; }
+          return;
+        }
+        // Группы, ждущие локального ffmpeg-монтажа (MONTAGE_BACKEND=local).
+        const montageWaiting = Array.isArray(d.actions)
+          ? d.actions.filter((a: { action: string }) => a.action === "ready_montage" || a.action === "awaiting_montage").length
+          : 0;
+        setPipelineStatus(
+          montageWaiting > 0
+            ? `Pipeline: ${d.totalInProgress} в работе · ▶ ${montageWaiting} ждут локального монтажа — запусти \`npm run montage\``
+            : `Pipeline: ${d.totalInProgress} в работе · advanced ${d.advanced} actions`,
+        );
+      } catch (e) {
+        console.warn("[auto-advance] poll error:", e);
+      }
+    };
+    tick();
+    pollingRef.current = setInterval(tick, 30_000);
+  };
+  useEffect(() => () => {
+    if (pollingRef.current) clearInterval(pollingRef.current);
+  }, []);
+  useEffect(() => {
+    if (autoTriggerRef.current && session && !generating && briefs.length === 0) {
+      autoTriggerRef.current = false;
+      handleGenerate();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
 
   const handleGenerate = async () => {
     if (!session) return;
@@ -443,7 +478,6 @@ function BriefsContent() {
     setError("");
     setProgress(0);
     setBriefs([]);
-    setBatchPage(0);
     await briefStore.clearBySession(session.id);
 
     try {
@@ -486,27 +520,44 @@ function BriefsContent() {
 
       await sessionStore.update(session.id, { status: "done" });
       setSession(prev => prev ? { ...prev, status: "done" } : prev);
+
+      // AUTO-PUBLISH: создаём creative-строки сразу после генерации.
+      // Без ручного клика «Опубликовать» — у нас saveMany() уже пишет с status='approved'.
+      try {
+        const pubRes = await fetch("/api/briefs/publish", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: session.id }),
+        });
+        const pubData = await pubRes.json();
+        if (pubData.ok && pubData.creatives) {
+          setPublished(pubData.creatives);
+        }
+      } catch { /* публикация некритична — пользователь видит брифы */ }
+
+      // AUTO-PRODUCE: запускаем Higgsfield-генерацию для всех брифов сессии.
+      // Видео идут через generate-scenes (Kling + voice + lipsync + stitch),
+      // статика — через generate (одно изображение).
+      try {
+        const prodRes = await fetch("/api/pack/produce", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ sessionId: session.id }),
+        });
+        const prodData = await prodRes.json();
+        if (!prodData.ok) {
+          console.warn("[pack/produce] not OK:", prodData);
+        }
+        // Стартуем фоновый polling pipeline-orchestrator'a
+        startPipelinePolling();
+      } catch (e) {
+        console.error("[pack/produce] failed:", e);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setGenerating(false);
       setProgress(100);
-    }
-  };
-
-  const publishApproved = async () => {
-    if (!sessionId) return;
-    setPublishing(true);
-    try {
-      const res = await fetch("/api/briefs/publish", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId }),
-      });
-      const data = await res.json();
-      if (data.ok) setPublished(data.creatives ?? []);
-    } finally {
-      setPublishing(false);
     }
   };
 
@@ -518,8 +569,8 @@ function BriefsContent() {
   };
 
   const handleApprove = async (id: string) => {
+    // Auto-approve flow убрал кнопку, но handler оставлен для совместимости BriefCard.
     const b = briefs.find(x => x.id === id);
-    // toggle: if already approved → reset to pending
     await updateStatus(id, b?.status === "approved" ? "pending" : "approved");
   };
 
@@ -528,17 +579,6 @@ function BriefsContent() {
     await updateStatus(revisionFor, "needs_revision", note);
     setRevisionFor(null);
   };
-
-  // Filtered & paginated
-  const filtered = filterStatus === "all" ? briefs : briefs.filter(b => b.status === filterStatus);
-  const totalPages = Math.ceil(filtered.length / BATCH_SIZE);
-  const pageBriefs = filtered.slice(batchPage * BATCH_SIZE, (batchPage + 1) * BATCH_SIZE);
-
-  const approved = briefs.filter(b => b.status === "approved").length;
-  const needsRevision = briefs.filter(b => b.status === "needs_revision").length;
-  const pending = briefs.filter(b => !b.status || b.status === "pending").length;
-
-  const allCurrentActioned = pageBriefs.length > 0 && pageBriefs.every(b => b.status === "approved" || b.status === "needs_revision");
 
   // ── Session list view ──────────────────────────────────────────────────────
 
@@ -618,54 +658,54 @@ function BriefsContent() {
 
       {briefs.length > 0 && (
         <>
-          {/* Stats */}
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 10, marginBottom: 20 }}>
-            {[
-              { label: "Всего", value: briefs.length, color: "#DDD" },
-              { label: "Одобрено", value: approved, color: "#6EC8A0" },
-              { label: "На доработке", value: needsRevision, color: "#E8AA42" },
-              { label: "Ожидает", value: pending, color: "#555" },
-            ].map(s => (
-              <Card key={s.label} style={{ textAlign: "center", padding: "14px 10px" }}>
-                <div style={{ fontSize: 24, fontWeight: 800, color: s.color }}>{s.value}</div>
-                <div style={{ fontSize: 10, color: "#555", marginTop: 3 }}>{s.label}</div>
-              </Card>
-            ))}
-          </div>
-
-          {/* Filter + Batch navigation */}
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, gap: 12 }}>
-            <div style={{ display: "flex", gap: 6 }}>
-              {(["all", "pending", "approved", "needs_revision"] as const).map(f => (
-                <button key={f} onClick={() => { setFilterStatus(f); setBatchPage(0); }} style={{
-                  padding: "6px 14px", borderRadius: 8, fontSize: 11, fontWeight: filterStatus === f ? 700 : 400,
-                  cursor: "pointer", fontFamily: "inherit",
-                  border: filterStatus === f ? "1px solid rgba(232,170,66,0.3)" : "1px solid rgba(255,255,255,0.06)",
-                  background: filterStatus === f ? "rgba(232,170,66,0.1)" : "rgba(255,255,255,0.02)",
-                  color: filterStatus === f ? "#E8AA42" : "#666",
-                }}>
-                  {f === "all" ? `Все (${briefs.length})` : f === "pending" ? `Ожидает (${pending})` : f === "approved" ? `Одобрено (${approved})` : `Правки (${needsRevision})`}
-                </button>
-              ))}
+          {/* Stats — компактно, без approve/revision */}
+          <Card style={{ marginBottom: 20, background: "rgba(110,200,160,0.04)", border: "1px solid rgba(110,200,160,0.15)" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+              <div style={{ fontSize: 28, fontWeight: 800, color: "#6EC8A0" }}>{briefs.length}</div>
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 13, color: "#DDD", fontWeight: 700 }}>Брифов сгенерировано</div>
+                <div style={{ fontSize: 11, color: "#666", marginTop: 2 }}>
+                  {pipelineStatus ?? "Higgsfield-генерация запускается автоматически. Жди в /creatives."}
+                </div>
+              </div>
+              <Button
+                onClick={async () => {
+                  if (!sessionId) return;
+                  setBusy(true);
+                  try {
+                    const r = await fetch("/api/pack/produce", {
+                      method: "POST",
+                      headers: { "Content-Type": "application/json" },
+                      body: JSON.stringify({ sessionId }),
+                    });
+                    const d = await r.json();
+                    if (d.ok) {
+                      startPipelinePolling();
+                      alert(`Производство запущено: ${d.succeeded}/${d.total} ушло в Higgsfield. Pipeline (voice/lipsync/stitch) автоматически продолжится — следи в /creatives.`);
+                    } else {
+                      alert(`Ошибка: ${d.error ?? "unknown"}`);
+                    }
+                  } finally {
+                    setBusy(false);
+                  }
+                }}
+                disabled={busy}
+              >
+                {busy ? "⏳ Запускаю..." : "🎬 (Пере)запустить производство"}
+              </Button>
+              <Link href={`/creatives?session=${sessionId}`}>
+                <Button variant="primary">→ Готовые крео</Button>
+              </Link>
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-              <span style={{ fontSize: 12, color: "#555" }}>Пачка {batchPage + 1} из {totalPages || 1}</span>
-              <Button size="sm" onClick={() => setBatchPage(p => Math.max(0, p - 1))} disabled={batchPage === 0}>←</Button>
-              <Button size="sm" onClick={() => setBatchPage(p => Math.min(totalPages - 1, p + 1))} disabled={batchPage >= totalPages - 1}>→</Button>
-            </div>
-          </div>
+          </Card>
 
-          {/* Current batch */}
-          <SectionTitle icon="📋">
-            Брифы {batchPage * BATCH_SIZE + 1}–{Math.min((batchPage + 1) * BATCH_SIZE, filtered.length)} из {filtered.length}
-          </SectionTitle>
-
+          {/* Flat list (без батчей + фильтров) */}
           <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: 16 }}>
-            {pageBriefs.map((b, i) => (
+            {briefs.map((b, i) => (
               <BriefCard
                 key={b.id}
                 brief={b}
-                index={batchPage * BATCH_SIZE + i}
+                index={i}
                 personas={personas} hooks={hooks} bodies={bodies} angles={angles}
                 onApprove={handleApprove}
                 onRevision={(id) => setRevisionFor(id)}
@@ -673,36 +713,6 @@ function BriefsContent() {
               />
             ))}
           </div>
-
-          {/* Batch action bar */}
-          <Card style={{ background: allCurrentActioned ? "rgba(110,200,160,0.06)" : "rgba(255,255,255,0.02)", border: allCurrentActioned ? "1px solid rgba(110,200,160,0.2)" : "1px solid rgba(255,255,255,0.06)" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-              <div style={{ flex: 1, fontSize: 12, color: allCurrentActioned ? "#6EC8A0" : "#555" }}>
-                {allCurrentActioned
-                  ? "✓ Все брифы в этой пачке обработаны"
-                  : `Осталось обработать: ${pageBriefs.filter(b => !b.status || b.status === "pending").length} из ${pageBriefs.length}`}
-              </div>
-              <Button
-                onClick={() => {
-                  // Approve all pending in current batch
-                  pageBriefs.filter(b => !b.status || b.status === "pending").forEach(b => handleApprove(b.id));
-                }}
-                disabled={busy || pageBriefs.every(b => b.status === "approved")}
-              >
-                ✓ Одобрить всю пачку
-              </Button>
-              {batchPage < totalPages - 1 && (
-                <Button variant="primary" onClick={() => setBatchPage(p => p + 1)}>
-                  Следующая пачка →
-                </Button>
-              )}
-              {approved > 0 && (
-                <Button variant="primary" onClick={publishApproved} disabled={publishing}>
-                  {publishing ? "⏳ Создаём..." : `🚀 Опубликовать ${approved} одобренных`}
-                </Button>
-              )}
-            </div>
-          </Card>
 
           {/* Published result */}
           {published.length > 0 && (
