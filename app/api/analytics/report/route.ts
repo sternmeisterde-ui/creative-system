@@ -50,6 +50,33 @@ async function fetchJson<T>(url: string): Promise<T | null> {
 
 const num = (v: unknown) => (typeof v === "number" ? v : Number(v) || 0);
 
+// Все агрегаты считает КОД (не LLM): суммы спенда/лидов по статусам.
+// Эти итоги отдаются и нарративу, и проверяющим как авторитетные — чтобы модель
+// цитировала точные числа, а не складывала сама (LLM ненадёжны в арифметике).
+function statusTotals(perf: PerfRow[]) {
+  const g = (st: string) => {
+    const rows = perf.filter(r => r.auto_status === st);
+    return {
+      n: rows.length,
+      spend: rows.reduce((a, r) => a + num(r.spend), 0),
+      leads: rows.reduce((a, r) => a + num(r.leads), 0),
+      qual: rows.reduce((a, r) => a + num(r.qual_leads), 0),
+    };
+  };
+  return { winner: g("winner"), fake: g("fake_winner"), loser: g("loser"), testing: g("testing") };
+}
+
+function totalsBlock(perf: PerfRow[]): string {
+  const t = statusTotals(perf);
+  const r = (x: { n: number; spend: number; leads: number; qual: number }) =>
+    `${x.n} шт · спенд €${x.spend.toFixed(0)} · лиды ${x.leads} · qual ${x.qual}`;
+  return `## ТОЧНЫЕ ИТОГИ (посчитаны кодом — ЦИТИРУЙ КАК ЕСТЬ; НЕ складывай и НЕ усредняй числа сам)
+Виннеры: ${r(t.winner)}
+Fake-winners: ${r(t.fake)}
+Лузеры: ${r(t.loser)}
+В тесте: ${r(t.testing)}`;
+}
+
 // ── GET: последний снапшот + история ──────────────────────────────────────────
 export async function GET(req: NextRequest) {
   const supabase = createServiceClient();
@@ -218,6 +245,8 @@ ${getAiContext()}
 Здоровье пакета: ${kpi.packHealth}. Объявлений: ${kpi.activeAds}. Спенд: €${kpi.totalSpend.toFixed(0)}. Blended CPL: ${eur(kpi.blendedCpl)}, CPQL: ${eur(kpi.blendedCpql)}.
 Виннеры: ${kpi.winners} · ⚠️ fake-winners: ${kpi.fakeWinners} · лузеры: ${kpi.losers} · в тесте: ${kpi.testing}.
 
+${totalsBlock(perf)}
+
 ## НАСТОЯЩИЕ ВИННЕРЫ (${winners.length})
 ${winners.slice(0, 15).map(r => `• ${r.ad_name} | CPL ${eur(r.cpl)} | CPQL ${eur(r.cpql)} | CR ${r.cr_lead_to_qual?.toFixed(0) ?? "—"}% | ROAS ${r.roas?.toFixed(2) ?? "—"}`).join("\n") || "Виннеров нет."}
 
@@ -240,7 +269,7 @@ ${visual.competitors.map(c => `• [${c.type ?? "—"}] ${c.title}${c.hook ? ` �
 ---
 
 ПРАВИЛА ТОЧНОСТИ (строго — иначе отчёт будет отклонён проверкой):
-- Опирайся ТОЛЬКО на числа и сущности выше. НЕ выдумывай метрик, НЕ округляй суммы вверх — бери значения как есть (если суммируешь — суммируй точно по приведённым строкам).
+- НЕ вычисляй агрегаты сам (суммы, средние, доли). ВСЕ суммарные числа (спенд/лиды по группам и т.п.) бери ТОЛЬКО из блока «ТОЧНЫЕ ИТОГИ» или из KPI. Если нужного готового числа нет — не приводи его, говори качественно («большинство», «несколько»), без выдуманной цифры.
 - Коды P/H/B/A отдельных креативов НЕ даны — НЕ приписывай конкретному объявлению код наугад. Ссылайся на креатив по его ad_name. Коды (CS#/H#/B#/A#) используй ТОЛЬКО те, что реально есть в секциях HELPS/HURTS/СЕМЬИ/КОМБО.
 - Любая связка кодов в рекомендациях должна опираться на HELPS/СЕМЬИ/КОМБО выше, а не на догадку.
 - Списки виннеров/fake/лузеров — это СРЕЗ (top-N), НЕ весь массив. Не делай выводов «минимальный/максимальный во всём массиве» или «X несёт основную нагрузку» на основе среза — говори только о показанных строках.
@@ -314,6 +343,9 @@ function buildAuditContext(args: {
 - loser: показы ≥ порога И (CPL > цели ИЛИ CPQL > цели). testing: мало показов / нет лидов.
 
 KPI: пакет ${kpi.packHealth}; объявлений ${kpi.activeAds}; спенд €${kpi.totalSpend.toFixed(0)}; blended CPL ${eur(kpi.blendedCpl)}; CPQL ${eur(kpi.blendedCpql)}; виннеры ${kpi.winners}; fake ${kpi.fakeWinners}; лузеры ${kpi.losers}; в тесте ${kpi.testing}.
+
+${totalsBlock(perf)}
+(Это авторитетные итоги по ГРУППАМ. Списки ниже — усечённый top-N; НЕ пересчитывай суммы по ним и не сравнивай свою сумму среза с итогами выше.)
 
 ВИННЕРЫ (${winners.length}):
 ${winners.slice(0, 20).map(line).join("\n") || "—"}
