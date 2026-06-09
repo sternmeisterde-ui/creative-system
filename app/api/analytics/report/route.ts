@@ -353,21 +353,19 @@ async function verifyWithGemini(ctx: string): Promise<ReportVerification> {
 async function verifyWithCodex(ctx: string): Promise<ReportVerification> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) return { model: "codex", status: "skipped", confidence: 0, issues: [], summary: "OPENAI_API_KEY не задан" };
-  const model = process.env.OPENAI_MODEL ?? "gpt-5";
+  // Codex-модели работают через Responses API (НЕ chat/completions). Responses API
+  // также принимает обычные gpt-модели, поэтому используем его для любого OPENAI_MODEL.
+  const model = process.env.OPENAI_MODEL ?? "gpt-5.3-codex";
   try {
-    // temperature не задаём: часть моделей OpenAI (reasoning) принимает только default.
-    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+    const r = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
-      body: JSON.stringify({
-        model,
-        response_format: { type: "json_object" },
-        messages: [{ role: "system", content: AUDIT_INSTRUCTION }, { role: "user", content: ctx }],
-      }),
+      body: JSON.stringify({ model, instructions: AUDIT_INSTRUCTION, input: ctx }),
     });
     if (!r.ok) return { model: "codex", status: "error", confidence: 0, issues: [], summary: `OpenAI HTTP ${r.status}` };
-    const j = await r.json() as { choices?: { message?: { content?: string } }[] };
-    return parseVerdict(j.choices?.[0]?.message?.content ?? "", "codex");
+    const j = await r.json() as { output?: { content?: { type?: string; text?: string }[] }[] };
+    const text = (j.output ?? []).flatMap(o => o.content ?? []).map(c => c.text ?? "").join("");
+    return parseVerdict(text, "codex");
   } catch (e) {
     return { model: "codex", status: "error", confidence: 0, issues: [], summary: e instanceof Error ? e.message : String(e) };
   }
