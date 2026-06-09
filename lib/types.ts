@@ -341,6 +341,27 @@ export interface ReportVisual {
   competitors: ReportCompetitor[];
 }
 
+// ── Проверка отчёта независимыми моделями (Gemini + Codex/OpenAI) ───────────────
+
+export interface ReportVerificationIssue {
+  severity: "high" | "medium" | "low";
+  area: string;                        // напр. "metrics", "winners", "recommendations"
+  detail: string;                      // что не так
+}
+
+export interface ReportVerification {
+  model: string;                       // "gemini" | "codex"
+  status: "ok" | "warning" | "fail" | "skipped" | "error";
+  confidence: number;                  // 0..1
+  issues: ReportVerificationIssue[];
+  summary: string;                     // короткий вывод
+}
+
+export interface ReportVerifications {
+  overall: "ok" | "warning" | "fail";  // консенсус: fail если хоть один fail
+  checks: ReportVerification[];
+}
+
 export interface AnalysisReport {
   id: string;
   createdAt: string;
@@ -348,4 +369,5 @@ export interface AnalysisReport {
   kpi: ReportKpi;
   visual: ReportVisual;
   narrative: string;
+  verifications?: ReportVerifications | null;
 }

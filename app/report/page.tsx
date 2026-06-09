@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { Card, PageHeader, Button, Badge, Stat, SectionTitle, Empty } from "@/components/ui";
 import { personaStore, hookStore, bodyStore, angleStore } from "@/lib/store";
-import type { AnalysisReport, ReportSignal, ReportFamily, ReportCombo, ReportCompetitor } from "@/lib/types";
+import type { AnalysisReport, ReportSignal, ReportFamily, ReportCombo, ReportCompetitor, ReportVerification, ReportVerifications } from "@/lib/types";
 
 // Метаданные параметра для тултипа на коде (P/H/B/A)
 type ParamInfo = { type: string; typeLabel: string; name: string; description?: string };
@@ -79,6 +79,48 @@ function Chip({ s, helps, paramInfo }: { s: ReportSignal; helps: boolean; paramI
   );
 }
 
+const VSTATUS: Record<string, { c: string; t: string }> = {
+  ok: { c: "#6EC8A0", t: "OK" }, warning: { c: "#FF8B5A", t: "Сомнения" }, fail: { c: "#D96B6B", t: "Не пройдено" },
+  skipped: { c: "#666", t: "Пропущено" }, error: { c: "#666", t: "Ошибка" },
+};
+const MODEL_LABEL: Record<string, string> = { gemini: "Gemini", codex: "Codex (OpenAI)" };
+const SEV_COLOR: Record<string, string> = { high: "#D96B6B", medium: "#FF8B5A", low: "#888" };
+
+function VerdictPanel({ v }: { v: ReportVerification }) {
+  const st = VSTATUS[v.status] ?? VSTATUS.error;
+  const showConf = v.status === "ok" || v.status === "warning" || v.status === "fail";
+  return (
+    <div style={{ flex: 1, minWidth: 240, border: `1px solid ${st.c}30`, borderRadius: 10, padding: "12px 14px", background: `${st.c}0A` }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 6 }}>
+        <span style={{ fontWeight: 700, color: "#DDD", fontSize: 13 }}>{MODEL_LABEL[v.model] ?? v.model}</span>
+        <Badge color={st.c}>{st.t}{showConf ? ` · ${Math.round(v.confidence * 100)}%` : ""}</Badge>
+      </div>
+      {v.summary && <div style={{ fontSize: 12, color: "#AAA", lineHeight: 1.5, marginBottom: v.issues.length ? 8 : 0 }}>{v.summary}</div>}
+      {v.issues.map((it, i) => (
+        <div key={i} style={{ fontSize: 11, color: "#BBB", lineHeight: 1.45, marginTop: 5, paddingLeft: 10, borderLeft: `2px solid ${SEV_COLOR[it.severity] ?? "#888"}` }}>
+          <b style={{ color: SEV_COLOR[it.severity] ?? "#888" }}>{it.area}</b> — {it.detail}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function VerificationCard({ v }: { v: ReportVerifications | null }) {
+  if (!v) return null;
+  const st = VSTATUS[v.overall] ?? VSTATUS.warning;
+  return (
+    <Card style={{ borderColor: `${st.c}40` }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <SectionTitle icon="🛡" color={st.c}>Проверка отчёта (Gemini + Codex)</SectionTitle>
+        <Badge color={st.c}>итог: {st.t}</Badge>
+      </div>
+      <div style={{ display: "flex", gap: 12, flexWrap: "wrap" }}>
+        {v.checks.map((c, i) => <VerdictPanel key={i} v={c} />)}
+      </div>
+    </Card>
+  );
+}
+
 export default function ReportPage() {
   const [view, setView] = useState<"report" | "graph">("report");
   const [report, setReport] = useState<AnalysisReport | null>(null);
@@ -86,6 +128,7 @@ export default function ReportPage() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [paramInfo, setParamInfo] = useState<Record<string, ParamInfo>>({});
+  const [override, setOverride] = useState(false); // показать отчёт несмотря на fail-проверку
 
   // Метаданные параметров (P/H/B/A) для тултипов на кодах — грузим один раз.
   useEffect(() => {
@@ -114,6 +157,7 @@ export default function ReportPage() {
   }, []);
 
   useEffect(() => { loadLatest(); }, [loadLatest]);
+  useEffect(() => { setOverride(false); }, [report?.id]); // новый снапшот → снова под блокировкой
 
   const generate = async () => {
     setLoading(true); setError("");
@@ -138,6 +182,9 @@ export default function ReportPage() {
   const kpi = report?.kpi;
   const visual = report?.visual;
   const h = HEALTH[kpi?.packHealth ?? "unknown"];
+  const verifications = report?.verifications ?? null;
+  // Блокирующий режим: при fail-вердикте прячем данные, пока пользователь не нажмёт «показать».
+  const blocked = verifications?.overall === "fail" && !override;
 
   return (
     <div style={{ maxWidth: 1100, margin: "0 auto" }}>
@@ -179,6 +226,18 @@ export default function ReportPage() {
 
       {view === "report" && report && kpi && visual && (
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {/* Проверка отчёта двумя моделями — показываем всегда */}
+          <VerificationCard v={verifications} />
+
+          {blocked ? (
+            <Card style={{ borderColor: "#D96B6B55", background: "#D96B6B0A" }}>
+              <div style={{ fontWeight: 700, color: "#D96B6B", fontSize: 14, marginBottom: 6 }}>⚠️ Проверка не пройдена — данным доверять нельзя</div>
+              <div style={{ fontSize: 12, color: "#BBB", lineHeight: 1.6, marginBottom: 12 }}>
+                Минимум одна модель нашла серьёзные несоответствия в числах или выводах (детали в блоке «Проверка» выше). Виннеры и метрики скрыты, чтобы не принять решение на кривых данных. Перегенерируй отчёт или проверь источник данных.
+              </div>
+              <Button size="sm" variant="ghost" onClick={() => setOverride(true)}>Показать отчёт всё равно</Button>
+            </Card>
+          ) : (<>
           {/* KPI */}
           <Card>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 18 }}>
@@ -251,6 +310,7 @@ export default function ReportPage() {
             <SectionTitle icon="📝" color="#E8AA42">Разбор и рекомендации</SectionTitle>
             <MarkdownBlock text={report.narrative} />
           </Card>
+          </>)}
 
           {/* История */}
           {history.length > 1 && (

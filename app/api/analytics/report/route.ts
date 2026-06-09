@@ -16,6 +16,7 @@ import { getSettings } from "@/lib/settings";
 import { getAiContext, getBusiness } from "@/lib/brief";
 import type {
   ReportKpi, ReportVisual, ReportSignal, ReportFamily, ReportCombo, ReportCompetitor,
+  ReportVerification, ReportVerifications,
 } from "@/lib/types";
 
 export const maxDuration = 120;
@@ -172,10 +173,13 @@ export async function POST(req: NextRequest) {
   // 4. Нарратив (один Opus-проход)
   const narrative = await buildNarrative({ flow, business, settings, perf, kpi, visual });
 
-  // 5. Сохранить снапшот
+  // 5. Две независимые проверки (Gemini + Codex/OpenAI) — аудит чисел и выводов
+  const verifications = await buildVerifications({ settings, kpi, visual, perf, narrative });
+
+  // 6. Сохранить снапшот
   const { data: saved, error } = await supabase
     .from("analysis_reports")
-    .insert({ flow, kpi, visual, narrative })
+    .insert({ flow, kpi, visual, narrative, verifications })
     .select("*")
     .single();
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
@@ -263,4 +267,124 @@ ${visual.competitors.map(c => `• [${c.type ?? "—"}] ${c.title}${c.hook ? ` �
     messages: [{ role: "user", content: prompt }],
   });
   return msg.content.find(b => b.type === "text")?.text ?? "";
+}
+
+// ── Проверка отчёта: 2 независимые модели (Gemini + Codex/OpenAI) ───────────────
+
+const AUDIT_INSTRUCTION = `Ты — независимый аудитор отчёта по Meta Ads. Тебе дан ДЕТЕРМИНИРОВАННЫЙ свод чисел (KPI, виннеры, fake-winners, лузеры, сигналы, семьи, комбо) и текстовый разбор, написанный ДРУГОЙ моделью. Проверь КОРРЕКТНОСТЬ информации, а не стиль:
+1) Правдоподобны ли метрики? Ищи аномалии: подозрительно низкий CPL/CPQL при ROAS<1; CPQL ниже CPL; нереалистичная доля виннеров; «дешёвые» виннеры, которые на деле убыточны (ROAS<1); противоречия между leads / qual_leads / CR.
+2) Соответствуют ли выводы разбора числам? Нет ли утверждений без опоры на данные или галлюцинаций.
+3) Обоснованы ли рекомендации (55/25/20) приведёнными данными?
+Верни СТРОГО JSON без markdown и без преамбулы:
+{"status":"ok|warning|fail","confidence":0..1,"issues":[{"severity":"high|medium|low","area":"кратко","detail":"что именно не так"}],"summary":"1-2 предложения"}
+status=fail — только при явных ошибках/противоречиях в данных или выводах; warning — при обоснованных сомнениях; ok — если всё консистентно.`;
+
+function buildAuditContext(args: {
+  settings: Awaited<ReturnType<typeof getSettings>>;
+  kpi: ReportKpi; visual: ReportVisual; perf: PerfRow[]; narrative: string;
+}): string {
+  const { settings, kpi, visual, perf, narrative } = args;
+  const eur = (v: number | null) => (v == null ? "—" : `€${v.toFixed(1)}`);
+  const line = (r: PerfRow) =>
+    `${r.ad_name} | spend €${num(r.spend).toFixed(0)} | CPL ${eur(r.cpl)} | CPQL ${eur(r.cpql)} | CR ${r.cr_lead_to_qual?.toFixed(0) ?? "—"}% | ROAS ${r.roas?.toFixed(2) ?? "—"} | leads ${r.leads}/${r.qual_leads}`;
+  const winners = perf.filter(r => r.auto_status === "winner");
+  const fakeWinners = perf.filter(r => r.auto_status === "fake_winner");
+  const losers = perf.filter(r => r.auto_status === "loser");
+  return `Цели: CPL ≤ €${settings.cplTarget}, CPQL ≤ €${settings.cpqlTarget}, порог значимости ${settings.minImpressionsForStatus} показов.
+KPI: пакет ${kpi.packHealth}; объявлений ${kpi.activeAds}; спенд €${kpi.totalSpend.toFixed(0)}; blended CPL ${eur(kpi.blendedCpl)}; CPQL ${eur(kpi.blendedCpql)}; виннеры ${kpi.winners}; fake ${kpi.fakeWinners}; лузеры ${kpi.losers}; в тесте ${kpi.testing}.
+
+ВИННЕРЫ (${winners.length}):
+${winners.slice(0, 20).map(line).join("\n") || "—"}
+
+FAKE-WINNERS (${fakeWinners.length}):
+${fakeWinners.slice(0, 15).map(line).join("\n") || "—"}
+
+ЛУЗЕРЫ (${losers.length}):
+${losers.slice(0, 10).map(line).join("\n") || "—"}
+
+HELPS: ${visual.helps.map(s => `${s.code}(${s.paramType}, ratio ${s.ratio?.toFixed(2) ?? "—"})`).join("; ") || "—"}
+HURTS: ${visual.hurts.map(s => `${s.code}(${s.paramType}, ratio ${s.ratio?.toFixed(2) ?? "—"})`).join("; ") || "—"}
+СЕМЬИ: ${visual.families.map(f => `${f.varyingParam}@${f.shared}: ${eur(f.bestCpl)}↔${eur(f.worstCpl)}`).join("; ") || "—"}
+КОМБО: ${visual.combos.map(c => `${c.codes}: ${c.winners}W ${eur(c.cpl)}`).join("; ") || "—"}
+
+=== РАЗБОР (написан другой моделью — его и проверяй) ===
+${narrative}`;
+}
+
+function parseVerdict(raw: string, model: string): ReportVerification {
+  try {
+    const m = raw.match(/\{[\s\S]*\}/);
+    const o = JSON.parse(m ? m[0] : raw) as Record<string, unknown>;
+    const status = ["ok", "warning", "fail"].includes(String(o.status)) ? (o.status as ReportVerification["status"]) : "warning";
+    const issues = Array.isArray(o.issues)
+      ? (o.issues as Record<string, unknown>[]).slice(0, 12).map(i => ({
+          severity: ["high", "medium", "low"].includes(String(i.severity)) ? (i.severity as "high" | "medium" | "low") : "medium",
+          area: String(i.area ?? "—").slice(0, 80),
+          detail: String(i.detail ?? "").slice(0, 400),
+        }))
+      : [];
+    return { model, status, confidence: typeof o.confidence === "number" ? o.confidence : 0.5, issues, summary: String(o.summary ?? "").slice(0, 600) };
+  } catch {
+    return { model, status: "error", confidence: 0, issues: [], summary: "Не удалось разобрать ответ модели" };
+  }
+}
+
+async function verifyWithGemini(ctx: string): Promise<ReportVerification> {
+  const key = process.env.GEMINI_API_KEY;
+  if (!key) return { model: "gemini", status: "skipped", confidence: 0, issues: [], summary: "GEMINI_API_KEY не задан" };
+  try {
+    const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${key}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        contents: [{ parts: [{ text: `${AUDIT_INSTRUCTION}\n\n${ctx}` }] }],
+        generationConfig: { temperature: 0, responseMimeType: "application/json" },
+      }),
+    });
+    if (!r.ok) return { model: "gemini", status: "error", confidence: 0, issues: [], summary: `Gemini HTTP ${r.status}` };
+    const j = await r.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+    const text = (j.candidates?.[0]?.content?.parts ?? []).map(p => p.text ?? "").join("");
+    return parseVerdict(text, "gemini");
+  } catch (e) {
+    return { model: "gemini", status: "error", confidence: 0, issues: [], summary: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+async function verifyWithCodex(ctx: string): Promise<ReportVerification> {
+  const key = process.env.OPENAI_API_KEY;
+  if (!key) return { model: "codex", status: "skipped", confidence: 0, issues: [], summary: "OPENAI_API_KEY не задан" };
+  const model = process.env.OPENAI_MODEL ?? "gpt-5";
+  try {
+    // temperature не задаём: часть моделей OpenAI (reasoning) принимает только default.
+    const r = await fetch("https://api.openai.com/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${key}` },
+      body: JSON.stringify({
+        model,
+        response_format: { type: "json_object" },
+        messages: [{ role: "system", content: AUDIT_INSTRUCTION }, { role: "user", content: ctx }],
+      }),
+    });
+    if (!r.ok) return { model: "codex", status: "error", confidence: 0, issues: [], summary: `OpenAI HTTP ${r.status}` };
+    const j = await r.json() as { choices?: { message?: { content?: string } }[] };
+    return parseVerdict(j.choices?.[0]?.message?.content ?? "", "codex");
+  } catch (e) {
+    return { model: "codex", status: "error", confidence: 0, issues: [], summary: e instanceof Error ? e.message : String(e) };
+  }
+}
+
+function computeOverall(checks: ReportVerification[]): ReportVerifications["overall"] {
+  if (checks.some(c => c.status === "fail")) return "fail";
+  if (checks.some(c => c.status === "warning")) return "warning";
+  if (checks.some(c => c.status === "ok")) return "ok";
+  return "warning"; // ни одна модель не подтвердила (skipped/error) → не «ok»
+}
+
+async function buildVerifications(args: {
+  settings: Awaited<ReturnType<typeof getSettings>>;
+  kpi: ReportKpi; visual: ReportVisual; perf: PerfRow[]; narrative: string;
+}): Promise<ReportVerifications> {
+  const ctx = buildAuditContext(args);
+  const checks = await Promise.all([verifyWithGemini(ctx), verifyWithCodex(ctx)]);
+  return { overall: computeOverall(checks), checks };
 }
