@@ -1,11 +1,18 @@
 "use client";
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, createContext, useContext } from "react";
 import { ReactFlow, Background, Controls, Handle, Position, type Node, type Edge } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
+import { personaStore, hookStore, bodyStore, angleStore } from "@/lib/store";
 
 const PARAM_COLOR: Record<string, string> = {
   persona: "#48B8D0", hook: "#C490D1", body: "#6EC8A0", angle: "#FF8B5A",
 };
+
+// Метаданные параметров для тултипа на коде. В трансформируемом/обрезаемом холсте
+// React Flow используем нативный title (не клипается, не масштабируется зумом).
+type ParamInfo = { typeLabel: string; name: string; description?: string };
+const TYPE_LABEL: Record<string, string> = { persona: "Персона", hook: "Хук", body: "Боди", angle: "Энгл" };
+const ParamCtx = createContext<Record<string, ParamInfo>>({});
 const KIND = {
   winner:   { c: "#6EC8A0", t: "ВИННЕР" },
   loser:    { c: "#D96B6B", t: "ЛУЗЕР" },
@@ -29,10 +36,15 @@ type NodeData = {
 };
 
 function Chip({ pt, code, dim }: { pt: string; code: string | null; dim?: boolean }) {
+  const paramInfo = useContext(ParamCtx);
   if (!code) return null;
   const c = PARAM_COLOR[pt] ?? "#888";
+  const info = paramInfo[code];
+  const tip = info
+    ? `${info.typeLabel} ${code} — ${info.name}${info.description ? `\n\n${info.description}` : ""}`
+    : undefined;
   return (
-    <span style={{ fontFamily: "monospace", fontSize: 11, fontWeight: 700, color: dim ? "#555" : c, padding: "2px 6px", borderRadius: 5, background: `${c}${dim ? "0A" : "1A"}`, border: `1px solid ${c}${dim ? "20" : "40"}`, textDecoration: dim ? "line-through" : "none" }}>{code}</span>
+    <span title={tip} style={{ fontFamily: "monospace", fontSize: 11, fontWeight: 700, color: dim ? "#555" : c, padding: "2px 6px", borderRadius: 5, background: `${c}${dim ? "0A" : "1A"}`, border: `1px solid ${c}${dim ? "20" : "40"}`, textDecoration: dim ? "line-through" : "none", cursor: info ? "help" : "default" }}>{code}</span>
   );
 }
 
@@ -72,12 +84,30 @@ const nodeTypes = { creative: CreativeNode };
 export default function LineageGraph() {
   const [data, setData] = useState<GraphData | null>(null);
   const [err, setErr] = useState("");
+  const [paramInfo, setParamInfo] = useState<Record<string, ParamInfo>>({});
 
   useEffect(() => {
     fetch("/api/analytics/lineage-graph")
       .then(r => r.json())
       .then(d => d.ok ? setData(d) : setErr(d.error ?? "Ошибка"))
       .catch(e => setErr(String(e)));
+  }, []);
+
+  // Метаданные параметров для тултипов на кодах (грузим один раз).
+  useEffect(() => {
+    (async () => {
+      try {
+        const [ps, hs, bs, as] = await Promise.all([
+          personaStore.getAll(), hookStore.getAll(), bodyStore.getAll(), angleStore.getAll(),
+        ]);
+        const m: Record<string, ParamInfo> = {};
+        const add = (arr: { code?: string; name: string; description?: string }[], type: string) => {
+          for (const x of arr) if (x.code) m[x.code] = { typeLabel: TYPE_LABEL[type], name: x.name, description: x.description };
+        };
+        add(ps, "persona"); add(hs, "hook"); add(bs, "body"); add(as, "angle");
+        setParamInfo(m);
+      } catch { /* тултипы просто не покажутся */ }
+    })();
   }, []);
 
   const { nodes, edges } = useMemo<{ nodes: Node[]; edges: Edge[] }>(() => {
@@ -123,11 +153,13 @@ export default function LineageGraph() {
   if (!data.hasData) return <div style={{ color: "#666", fontSize: 13, padding: 20 }}>Нет виннеров для схемы. Появятся, когда объявления наберут данные (CPL ≤ цель + ≥ порог показов).</div>;
 
   return (
-    <div style={{ height: 600, width: "100%", borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)" }}>
-      <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.15 }} minZoom={0.3} proOptions={{ hideAttribution: true }}>
-        <Background color="#222" gap={20} />
-        <Controls showInteractive={false} />
-      </ReactFlow>
-    </div>
+    <ParamCtx.Provider value={paramInfo}>
+      <div style={{ height: 600, width: "100%", borderRadius: 12, overflow: "hidden", border: "1px solid rgba(255,255,255,0.07)" }}>
+        <ReactFlow nodes={nodes} edges={edges} nodeTypes={nodeTypes} fitView fitViewOptions={{ padding: 0.15 }} minZoom={0.3} proOptions={{ hideAttribution: true }}>
+          <Background color="#222" gap={20} />
+          <Controls showInteractive={false} />
+        </ReactFlow>
+      </div>
+    </ParamCtx.Provider>
   );
 }
