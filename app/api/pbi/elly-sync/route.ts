@@ -110,12 +110,19 @@ async function collectToolResult(sse: SseReader, timeoutMs: number): Promise<str
 // ── Parse Plurio table response ───────────────────────────────────────────────
 
 interface EllyRow {
+  date: string;          // конкретный день YYYY-MM-DD (дневная разбивка), "" если Plurio не отдал
   adId: string;
   adName: string;
   leads: number;
   qualLeads: number;
   spend: number;
   revenue: number;
+}
+
+// Date из ответа Plurio → строгий YYYY-MM-DD (или "" если не распознан).
+function parseDate(v: unknown): string {
+  const m = String(v ?? "").match(/(\d{4})-(\d{2})-(\d{2})/);
+  return m ? `${m[1]}-${m[2]}-${m[3]}` : "";
 }
 
 function parseNum(v: unknown): number {
@@ -130,6 +137,7 @@ function parseViz(text: string): EllyRow[] | null {
     const viz = JSON.parse(m[1]);
     if (viz.type !== "Table" || !Array.isArray(viz.data)) return null;
     return viz.data.map((r: Record<string, unknown>) => ({
+      date:      parseDate(r.Date ?? r.date),
       adId:      String(r.AdId ?? r.adId ?? ""),
       adName:    String(r.AdName ?? r.adName ?? ""),
       leads:     parseNum(r.Leads ?? r.leads),
@@ -155,6 +163,7 @@ function parseMarkdownTable(text: string): EllyRow[] | null {
   if (dataLines.length === 0) return null;
 
   const idx = {
+    date:      headers.findIndex(h => h === "date" || h === "дата"),
     adId:      headers.findIndex(h => h === "adid" || h === "id"),
     adName:    headers.findIndex(h => h === "adname" || h === "name" || h === "название"),
     leads:     headers.findIndex(h => h === "leads" || h === "лиды"),
@@ -172,6 +181,7 @@ function parseMarkdownTable(text: string): EllyRow[] | null {
     const adId   = idx.adId   >= 0 ? (cols[idx.adId]   ?? "") : "";
     if (!adName && !adId) continue;
     rows.push({
+      date:      idx.date      >= 0 ? parseDate(cols[idx.date])    : "",
       adId,
       adName:    adName || adId,
       leads:     idx.leads     >= 0 ? parseNum(cols[idx.leads])     : 0,
@@ -230,6 +240,7 @@ function parseTsvText(text: string): EllyRow[] {
 
   const headers = lines[0].split("\t").map(norm);
   const idx = {
+    date:      headers.findIndex(h => h === "date" || h === "дата"),
     adId:      headers.findIndex(h => h === "adid" || h === "id"),
     adName:    headers.findIndex(h => h === "adname" || h === "name" || h === "название"),
     leads:     headers.findIndex(h => h === "leads" || h === "лиды"),
@@ -247,6 +258,7 @@ function parseTsvText(text: string): EllyRow[] {
     const adId   = idx.adId   >= 0 ? (cols[idx.adId]   ?? "").trim() : "";
     if (!adName && !adId) continue;
     rows.push({
+      date:      idx.date      >= 0 ? parseDate(cols[idx.date])    : "",
       adId,
       adName:    adName || adId,
       leads:     idx.leads     >= 0 ? parseNum(cols[idx.leads])     : 0,
@@ -316,9 +328,10 @@ async function syncElly(dateFrom: string, dateTo: string): Promise<EllyRow[]> {
   const { sse, sessionUrl } = await mcpConnect();
 
   const question =
-    `Дай данные по объявлениям (ad level) из Facebook and Instagram за период ${dateFrom} — ${dateTo}. ` +
-    `Включи ВСЕ объявления, у которых Leads > 0 (без top-N ограничения, без обрезки). ` +
-    `Колонки: AdId, AdName, сумма Leads, сумма QL, сумма Adv Spend, сумма Revenue. ` +
+    `Дай ДНЕВНУЮ разбивку по объявлениям (ad level) из Facebook and Instagram за период ${dateFrom} — ${dateTo}. ` +
+    `ОТДЕЛЬНАЯ строка на КАЖДЫЙ день и КАЖДОЕ объявление — НЕ суммируй по дням, НЕ сворачивай в итог за период. ` +
+    `Колонки строго: Date, AdId, AdName, Leads, QL, Adv Spend, Revenue. Date — конкретный день в формате YYYY-MM-DD. ` +
+    `Включи ВСЕ строки, у которых Leads > 0 (без top-N ограничения, без обрезки). ` +
     `Фильтр: AttributionType = 'Leads Last Ad Click', SourceGroupName = 'Facebook and Instagram'. ` +
     `Верни ОДНУ markdown-таблицу со всеми строками. Если строк слишком много для inline — отдай TSV-файл, ` +
     `но обязательно укажи ПОЛНУЮ presigned URL в формате https://...sql-query-result-*.tsv?... в тексте ответа. ` +
@@ -388,23 +401,28 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceClient();
 
-  // Удаляем только строки именно этого периода (по dateTo), чтобы переписать
-  // повторный sync того же квартала, но НЕ затереть соседние кварталы.
+  // Дневная разбивка: чистим ВЕСЬ синкаемый диапазон [dateFrom, dateTo] по elly-строкам
+  // и перезаписываем настоящими дневными строками. Соседние периоды не трогаем.
   await supabase
     .from("pbi_metrics")
     .delete()
     .like("ad_id", "elly:%")
-    .eq("date", dateTo);
+    .gte("date", dateFrom)
+    .lte("date", dateTo);
 
+  // Строка пишется на СВОЙ день (r.date). Если Plurio не отдал Date по строке —
+  // деградируем на dateTo, но это сигнал, что разбивка не сработала (см. warn ниже).
   const payload = rows.map(r => ({
     ad_id:      `elly:${r.adId || r.adName.trim()}`,
     ad_name:    r.adName.trim(),
-    date:       dateTo,
+    date:       r.date || dateTo,
     leads:      Math.round(r.leads),
     qual_leads: Math.round(r.qualLeads),
     spend:      r.spend,
     revenue:    r.revenue,
   }));
+
+  const undated = rows.filter(r => !r.date).length;
 
   const { error } = await supabase
     .from("pbi_metrics")
@@ -417,7 +435,8 @@ export async function POST(req: NextRequest) {
   // Run alert check after fresh Plurio data is saved
   runAlertCheck().catch(() => {});
 
-  return NextResponse.json({ ok: true, synced: payload.length, dateFrom, dateTo });
+  // undated > 0 → Plurio вернул строки без Date (разбивка не сработала, ушли на dateTo).
+  return NextResponse.json({ ok: true, synced: payload.length, undated, dateFrom, dateTo });
 }
 
 export async function GET() {

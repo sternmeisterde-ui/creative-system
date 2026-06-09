@@ -54,6 +54,11 @@ function blendedCpl(spend: number, leads: number): number | null {
   return leads > 0 ? Math.round((spend / leads) * 100) / 100 : null;
 }
 
+// Семьи: член может задавать best/worst CPL только при достаточном объёме лидов.
+// Та же планка значимости, что и в сплите (verdict: leads < 3 → INSUFFICIENT) —
+// иначе 1-лидовый ад со старым lifetime-спендом даёт CPL-выброс €3000+ и ложный «разброс».
+const MIN_FAMILY_LEADS = 3;
+
 function verdict(ratio: number | null, withLeads: number, withoutLeads: number): BivariateResult["verdict"] {
   if (ratio == null || withLeads < 3 || withoutLeads < 3) return "INSUFFICIENT";
   if (ratio < 0.75) return "HELPS";
@@ -262,7 +267,8 @@ export async function GET() {
       const qualifiedAds = groupAds.filter(a => a.spend >= 20);
       if (qualifiedAds.length < 2) continue;
       if (new Set(qualifiedAds.map(a => config.getCode(a)).filter(Boolean)).size < 2) continue;
-      if (!qualifiedAds.some(a => a.leads > 0)) continue;
+      // Нужен хотя бы один член со значимым объёмом лидов — иначе best/worst считать не из чего.
+      if (!qualifiedAds.some(a => a.leads >= MIN_FAMILY_LEADS)) continue;
 
       const rep = qualifiedAds[0];
       const members: FamilyMember[] = qualifiedAds.map(a => {
@@ -282,7 +288,11 @@ export async function GET() {
         return a.cpl - b.cpl;
       });
 
-      const cpls = members.map(m => m.cpl).filter((c): c is number => c != null);
+      // best/worst — только из членов со значимым объёмом лидов (≥ MIN_FAMILY_LEADS),
+      // чтобы 1-2 лидовые ады не задавали выбросный «худший/лучший» CPL.
+      const cpls = members
+        .filter(m => m.leads >= MIN_FAMILY_LEADS && m.cpl != null)
+        .map(m => m.cpl as number);
       families.push({
         id: `${config.key}__${config.groupKey(rep)}`,
         varyingParam: config.key,
