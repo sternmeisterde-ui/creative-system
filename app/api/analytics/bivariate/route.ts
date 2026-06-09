@@ -55,9 +55,10 @@ function blendedCpl(spend: number, leads: number): number | null {
 }
 
 // Семьи: член может задавать best/worst CPL только при достаточном объёме лидов.
-// Та же планка значимости, что и в сплите (verdict: leads < 3 → INSUFFICIENT) —
-// иначе 1-лидовый ад со старым lifetime-спендом даёт CPL-выброс €3000+ и ложный «разброс».
-const MIN_FAMILY_LEADS = 3;
+// Планка = 5: совпадает с порогом значимости view для риск-сигнала low_qual_cr
+// (leads >= 5). Эмпирически 3→5 убирает «худшие» выбросы на 3-4 лидах (€374/€272)
+// без потери семей; 10 уже режет покрытие низкообъёмных/свежих адов без выигрыша.
+const MIN_FAMILY_LEADS = 5;
 
 function verdict(ratio: number | null, withLeads: number, withoutLeads: number): BivariateResult["verdict"] {
   if (ratio == null || withLeads < 3 || withoutLeads < 3) return "INSUFFICIENT";
