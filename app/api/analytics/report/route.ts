@@ -243,6 +243,7 @@ ${visual.competitors.map(c => `• [${c.type ?? "—"}] ${c.title}${c.hook ? ` �
 - Опирайся ТОЛЬКО на числа и сущности выше. НЕ выдумывай метрик, НЕ округляй суммы вверх — бери значения как есть (если суммируешь — суммируй точно по приведённым строкам).
 - Коды P/H/B/A отдельных креативов НЕ даны — НЕ приписывай конкретному объявлению код наугад. Ссылайся на креатив по его ad_name. Коды (CS#/H#/B#/A#) используй ТОЛЬКО те, что реально есть в секциях HELPS/HURTS/СЕМЬИ/КОМБО.
 - Любая связка кодов в рекомендациях должна опираться на HELPS/СЕМЬИ/КОМБО выше, а не на догадку.
+- Списки виннеров/fake/лузеров — это СРЕЗ (top-N), НЕ весь массив. Не делай выводов «минимальный/максимальный во всём массиве» или «X несёт основную нагрузку» на основе среза — говори только о показанных строках.
 
 Дай структурированный анализ на русском (markdown, секции через "### "):
 
@@ -276,26 +277,42 @@ ${visual.competitors.map(c => `• [${c.type ?? "—"}] ${c.title}${c.hook ? ` �
 
 // ── Проверка отчёта: 2 независимые модели (Gemini + Codex/OpenAI) ───────────────
 
-const AUDIT_INSTRUCTION = `Ты — независимый аудитор отчёта по Meta Ads. Тебе дан ДЕТЕРМИНИРОВАННЫЙ свод чисел (KPI, виннеры, fake-winners, лузеры, сигналы, семьи, комбо) и текстовый разбор, написанный ДРУГОЙ моделью. Проверь КОРРЕКТНОСТЬ информации, а не стиль:
-1) Правдоподобны ли метрики? Ищи аномалии: подозрительно низкий CPL/CPQL при ROAS<1; CPQL ниже CPL; нереалистичная доля виннеров; «дешёвые» виннеры, которые на деле убыточны (ROAS<1); противоречия между leads / qual_leads / CR.
-2) Соответствуют ли выводы разбора числам? Нет ли утверждений без опоры на данные или галлюцинаций.
-3) Обоснованы ли рекомендации (55/25/20) приведёнными данными?
+const AUDIT_INSTRUCTION = `Ты — независимый аудитор отчёта по Meta Ads. Дан ДЕТЕРМИНИРОВАННЫЙ свод чисел и текстовый разбор (написан ДРУГОЙ моделью). Проверяй КОРРЕКТНОСТЬ строго по ПРАВИЛАМ КЛАССИФИКАЦИИ, приведённым в контексте, — НЕ по своей наивной эвристике.
+
+ВАЖНО (частые ложные срабатывания — НЕ считай это ошибками):
+- ROAS = 0 у МОЛОДОГО ада (age < порога зрелости) — ЭТО НОРМА: цикл сделки 14–30 дней, выручка ещё не дозрела. Молодой winner с ROAS 0 классифицирован ВЕРНО.
+- fake_winner с ВЫСОКИМ ROAS — допустимо, если у строки есть risk_signals (напр. short_lifespan): значит причина не в ROAS. Смотри поле signals перед выводом о «неверной классификации».
+- Статусы (winner/fake_winner/loser/testing) уже проставлены по правилам в контексте — если они правилам соответствуют, это НЕ ошибка.
+
+ЧТО ПРОВЕРЯТЬ:
+1) Аномалии в ЧИСЛАХ: CPQL < CPL; противоречия leads/qual_leads/CR; нереалистичные значения; статус, НЕ соответствующий правилам.
+2) Соответствуют ли выводы разбора числам; нет ли галлюцинаций; НЕ делает ли разбор выводов «по всему массиву» из усечённого среза (показан top-N, не всё) — это повод для warning.
+3) Обоснованы ли рекомендации (55/25/20).
 Верни СТРОГО JSON без markdown и без преамбулы:
 {"status":"ok|warning|fail","confidence":0..1,"issues":[{"severity":"high|medium|low","area":"кратко","detail":"что именно не так"}],"summary":"1-2 предложения"}
-status=fail — только при явных ошибках/противоречиях в данных или выводах; warning — при обоснованных сомнениях; ok — если всё консистентно.`;
+status=fail — ТОЛЬКО при явных ошибках в данных/выводах (НЕ за следование правилам классификации); warning — обоснованные сомнения; ok — консистентно.`;
 
 function buildAuditContext(args: {
   settings: Awaited<ReturnType<typeof getSettings>>;
   kpi: ReportKpi; visual: ReportVisual; perf: PerfRow[]; narrative: string;
 }): string {
   const { settings, kpi, visual, perf, narrative } = args;
+  const ROAS_MATURITY = 30;   // age, после которого требуется ROAS (верх цикла сделки)
+  const ROAS_WIN_MIN = 1.0;   // минимальный ROAS для зрелого винера
   const eur = (v: number | null) => (v == null ? "—" : `€${v.toFixed(1)}`);
+  const sig = (r: PerfRow) => (Array.isArray(r.risk_signals) && r.risk_signals.length ? (r.risk_signals as string[]).join(",") : "—");
   const line = (r: PerfRow) =>
-    `${r.ad_name} | spend €${num(r.spend).toFixed(0)} | CPL ${eur(r.cpl)} | CPQL ${eur(r.cpql)} | CR ${r.cr_lead_to_qual?.toFixed(0) ?? "—"}% | ROAS ${r.roas?.toFixed(2) ?? "—"} | leads ${r.leads}/${r.qual_leads}`;
+    `${r.ad_name} | spend €${num(r.spend).toFixed(0)} | CPL ${eur(r.cpl)} | CPQL ${eur(r.cpql)} | CR ${r.cr_lead_to_qual?.toFixed(0) ?? "—"}% | ROAS ${r.roas?.toFixed(2) ?? "—"} | age ${r.age_days ?? "—"}д | signals ${sig(r)} | leads ${r.leads}/${r.qual_leads}`;
   const winners = perf.filter(r => r.auto_status === "winner");
   const fakeWinners = perf.filter(r => r.auto_status === "fake_winner");
   const losers = perf.filter(r => r.auto_status === "loser");
   return `Цели: CPL ≤ €${settings.cplTarget}, CPQL ≤ €${settings.cpqlTarget}, порог значимости ${settings.minImpressionsForStatus} показов.
+
+ПРАВИЛА КЛАССИФИКАЦИИ (статусы проставлены ПО НИМ — проверяй соответствие, не свою эвристику):
+- winner: показы ≥ порога И CPL ≤ цели И CPQL ≤ цели И (ад МОЛОДОЙ age<${ROAS_MATURITY}д ИЛИ ROAS ≥ ${ROAS_WIN_MIN}). Цикл сделки 14–30 дн: у молодых выручка не дозрела → ROAS=0 у молодого винера = НОРМА.
+- fake_winner: пороги CPL/CPQL пройдены, но есть риск — зрелый (age≥${ROAS_MATURITY}) с ROAS<${ROAS_WIN_MIN} ЛИБО есть signals (short_lifespan/low_roas_30d). Высокий ROAS у fake_winner ОК, если стоит signal.
+- loser: показы ≥ порога И (CPL > цели ИЛИ CPQL > цели). testing: мало показов / нет лидов.
+
 KPI: пакет ${kpi.packHealth}; объявлений ${kpi.activeAds}; спенд €${kpi.totalSpend.toFixed(0)}; blended CPL ${eur(kpi.blendedCpl)}; CPQL ${eur(kpi.blendedCpql)}; виннеры ${kpi.winners}; fake ${kpi.fakeWinners}; лузеры ${kpi.losers}; в тесте ${kpi.testing}.
 
 ВИННЕРЫ (${winners.length}):
