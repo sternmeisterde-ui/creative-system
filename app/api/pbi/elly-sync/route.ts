@@ -327,11 +327,14 @@ async function syncElly(dateFrom: string, dateTo: string): Promise<EllyRow[]> {
 
   const { sse, sessionUrl } = await mcpConnect();
 
+  // LIFETIME-агрегат на ad_id (НЕ дневная разбивка). Plurio даёт корректный итог
+  // на уровне ad_id; дневная разбивка для quiz-адов раздувала лиды ~7x (см. ниже),
+  // а для /report нужен тотал лидов на креатив на момент отчёта.
   const question =
-    `Дай ДНЕВНУЮ разбивку по объявлениям (ad level) из Facebook and Instagram за период ${dateFrom} — ${dateTo}. ` +
-    `ОТДЕЛЬНАЯ строка на КАЖДЫЙ день и КАЖДОЕ объявление — НЕ суммируй по дням, НЕ сворачивай в итог за период. ` +
-    `Колонки строго: Date, AdId, AdName, Leads, QL, Adv Spend, Revenue. Date — конкретный день в формате YYYY-MM-DD. ` +
-    `Включи ВСЕ строки, у которых Leads > 0 (без top-N ограничения, без обрезки). ` +
+    `Дай СУММАРНЫЕ (агрегат за весь период ${dateFrom} — ${dateTo}, БЕЗ разбивки по дням) показатели ` +
+    `по объявлениям (ad level) из Facebook and Instagram. ОДНА строка на КАЖДЫЙ AdId — суммы за весь период, не по дням. ` +
+    `Колонки строго: AdId, AdName, сумма Leads, сумма QL, сумма Adv Spend, сумма Revenue. ` +
+    `Включи ВСЕ объявления, у которых Leads > 0 (без top-N ограничения, без обрезки). ` +
     `Фильтр: AttributionType = 'Leads Last Ad Click', SourceGroupName = 'Facebook and Instagram'. ` +
     `Верни ОДНУ markdown-таблицу со всеми строками. Если строк слишком много для inline — отдай TSV-файл, ` +
     `но обязательно укажи ПОЛНУЮ presigned URL в формате https://...sql-query-result-*.tsv?... в тексте ответа. ` +
@@ -387,10 +390,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // LIFETIME-режим: по умолчанию тянем агрегат за ВСЁ время (с запасом от 2024-01-01),
+  // одна строка на ad_id. dateTo = сегодня. Можно переопределить телом запроса.
   const body = await req.json().catch(() => ({})) as { dateFrom?: string; dateTo?: string };
   const today = new Date();
   const dateTo   = body.dateTo   ?? today.toISOString().slice(0, 10);
-  const dateFrom = body.dateFrom ?? new Date(today.getTime() - 30 * 864e5).toISOString().slice(0, 10);
+  const dateFrom = body.dateFrom ?? "2024-01-01";
 
   let rows: EllyRow[];
   try {
@@ -401,28 +406,24 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceClient();
 
-  // Дневная разбивка: чистим ВЕСЬ синкаемый диапазон [dateFrom, dateTo] по elly-строкам
-  // и перезаписываем настоящими дневными строками. Соседние периоды не трогаем.
+  // Полная замена: lifetime-агрегат — это снимок «итог на момент синка», одна строка
+  // на ad_id. Чистим ВСЕ elly-строки и пишем свежий снимок (дата = dateTo), чтобы
+  // во view был ровно один ряд на ad_id и sum(leads) по имени = корректный lifetime.
+  // (Дневной режим убран: суммирование дневных строк раздувало quiz-лиды ~7x.)
   await supabase
     .from("pbi_metrics")
     .delete()
-    .like("ad_id", "elly:%")
-    .gte("date", dateFrom)
-    .lte("date", dateTo);
+    .like("ad_id", "elly:%");
 
-  // Строка пишется на СВОЙ день (r.date). Если Plurio не отдал Date по строке —
-  // деградируем на dateTo, но это сигнал, что разбивка не сработала (см. warn ниже).
   const payload = rows.map(r => ({
     ad_id:      `elly:${r.adId || r.adName.trim()}`,
     ad_name:    r.adName.trim(),
-    date:       r.date || dateTo,
+    date:       dateTo,
     leads:      Math.round(r.leads),
     qual_leads: Math.round(r.qualLeads),
     spend:      r.spend,
     revenue:    r.revenue,
   }));
-
-  const undated = rows.filter(r => !r.date).length;
 
   const { error } = await supabase
     .from("pbi_metrics")
@@ -435,8 +436,7 @@ export async function POST(req: NextRequest) {
   // Run alert check after fresh Plurio data is saved
   runAlertCheck().catch(() => {});
 
-  // undated > 0 → Plurio вернул строки без Date (разбивка не сработала, ушли на dateTo).
-  return NextResponse.json({ ok: true, synced: payload.length, undated, dateFrom, dateTo });
+  return NextResponse.json({ ok: true, synced: payload.length, dateFrom, dateTo });
 }
 
 export async function GET() {
