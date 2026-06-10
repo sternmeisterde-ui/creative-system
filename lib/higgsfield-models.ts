@@ -117,8 +117,8 @@ export function findModel(slug: string): HiggsfieldModel | undefined {
   return HIGGSFIELD_MODELS.find(m => m.slug === slug);
 }
 
-// Дефолт статики — Gemini nano-banana (хорошо рендерит русский текст), через GEMINI_API_KEY.
-// Higgsfield-soul оставлен в реестре как fallback (плохо с текстом). nano-banana* у Higgsfield мертвы (404).
-export const DEFAULT_STATIC_MODEL = "gemini-2.5-flash-image";
+// Дефолт статики — gemini-3-pro-image: рендерит русский текст БЕЗ ошибок (2.5-flash коверкает),
+// фотореализм + вертикаль. Через GEMINI_API_KEY. 2.5-flash-image и soul остаются в реестре (быстрее/дешевле, но текст хуже).
+export const DEFAULT_STATIC_MODEL = "gemini-3-pro-image-preview";
 // Kling 2.6 Pro — лучшее качество видео в Higgsfield (платная, не в unlimited).
 export const DEFAULT_VIDEO_MODEL  = "kling-video/v2.6/pro/text-to-video";
