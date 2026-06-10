@@ -6,6 +6,7 @@ import type { PackHealthResult } from "@/app/api/analytics/pack-health/route";
 import type { EarlyStopResult } from "@/app/api/analytics/early-stop/route";
 import { Card, PageHeader, Badge, Button, SectionTitle } from "@/components/ui";
 import Link from "next/link";
+import CycleRunner from "@/components/CycleRunner";
 
 interface ParamStat {
   code: string;
@@ -346,6 +347,8 @@ export default function PanelPage() {
           </div>
         }
       />
+
+      <div style={{ marginBottom: 16 }}><CycleRunner /></div>
 
       {/* Плановые метрики */}
       <Card style={{ marginBottom: 16, background: "rgba(232,170,66,0.04)", border: "1px solid rgba(232,170,66,0.15)" }}>
