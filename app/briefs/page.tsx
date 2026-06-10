@@ -679,11 +679,16 @@ function BriefsContent() {
                       body: JSON.stringify({ sessionId }),
                     });
                     const d = await r.json();
-                    if (d.ok) {
-                      startPipelinePolling();
-                      alert(`Производство запущено: ${d.succeeded}/${d.total} ушло в Higgsfield. Pipeline (voice/lipsync/stitch) автоматически продолжится — следи в /creatives.`);
+                    if (!d.ok) { alert(`Ошибка: ${d.error ?? "unknown"}`); return; }
+                    startPipelinePolling();
+                    const left = d.deferred ?? 0;
+                    setPipelineStatus(`Ушло в Higgsfield: ${d.submitted} · ранее: ${d.alreadyDone} · осталось: ${left} из ${d.total}`);
+                    if (d.errors?.length) {
+                      alert(`Ушло ${d.submitted}/${d.total}. Ошибки (${d.errors.length}):\n${d.errors[0]}`);
+                    } else if (d.done) {
+                      alert(`✅ Все ${d.total} крео в производстве. Следи в /creatives.`);
                     } else {
-                      alert(`Ошибка: ${d.error ?? "unknown"}`);
+                      alert(`Ушло ${d.submitted}, осталось ${left} из ${d.total}.\n\nЛимит Higgsfield — 4 одновременных задачи. Нажми «(Пере)запустить производство» ещё раз, когда первые догенерятся — дубли НЕ создаются (идемпотентно).`);
                     }
                   } finally {
                     setBusy(false);

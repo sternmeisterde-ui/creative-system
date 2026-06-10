@@ -27,7 +27,7 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceClient();
 
-  // Берём все approved-брифы сессии (нужен format чтобы выбрать routing)
+  // approved-брифы сессии
   const { data: briefs, error } = await supabase
     .from("briefs")
     .select("id, persona_id, format")
@@ -39,56 +39,62 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Нет approved-брифов в сессии" }, { status: 400 });
   }
 
-  const personaIds = Array.from(new Set(briefs.map(b => b.persona_id).filter(Boolean)));
-  const { data: personas } = await supabase
-    .from("personas")
-    .select("id, name")
-    .in("id", personaIds);
+  // Идемпотентность: пропускаем брифы с уже успешной/активной генерацией,
+  // ретраим только без генерации или со статусом error/failed.
+  const briefIds = briefs.map(b => b.id);
+  const { data: gens } = await supabase
+    .from("creative_generations").select("brief_id, status").in("brief_id", briefIds);
+  const okStatuses = (g: { status: string }) => !["error", "failed"].includes(String(g.status));
+  const succeeded = new Set((gens ?? []).filter(okStatuses).map(g => g.brief_id));
+  const pending = briefs.filter(b => !succeeded.has(b.id));
+
+  if (pending.length === 0) {
+    return NextResponse.json({ ok: true, total: briefs.length, alreadyDone: succeeded.size, submitted: 0, deferred: 0, done: true });
+  }
+
+  const personaIds = Array.from(new Set(pending.map(b => b.persona_id).filter(Boolean)));
+  const { data: personas } = await supabase.from("personas").select("id, name").in("id", personaIds);
   const personaName = new Map((personas ?? []).map(p => [p.id, p.name as string]));
 
   const proto = req.headers.get("x-forwarded-proto") ?? "https";
   const host  = req.headers.get("host") ?? "creative.sternmeister.de";
   const baseUrl = `${proto}://${host}`;
 
-  // Routing по формату:
-  //   static  → /api/creative-gen/generate         (одна картинка через nano-banana)
-  //   video*  → /api/creative-gen/generate-scenes  (многосценное видео 30-60 сек через Kling + Creatomate stitch)
+  // static → одна картинка; video* → многосценное видео (Kling + stitch)
   const STATIC_FORMATS = new Set(["static"]);
   const endpointFor = (fmt: string) =>
     STATIC_FORMATS.has(fmt) ? "/api/creative-gen/generate" : "/api/creative-gen/generate-scenes";
 
-  const results = await Promise.allSettled(
-    briefs.map(b => {
-      const endpoint = endpointFor(String(b.format ?? "ugc"));
-      return fetch(`${baseUrl}${endpoint}`, {
+  // Higgsfield: лимит 4 активных задачи. Шлём ПОСЛЕДОВАТЕЛЬНО; как упёрлись в лимит
+  // ("Maximum number of concurrent requests") — стоп, остаток дошлётся следующим
+  // вызовом по мере освобождения слотов. Так не плодим дубли и не теряем брифы.
+  let submitted = 0, deferred = 0;
+  const errors: string[] = [];
+  for (let i = 0; i < pending.length; i++) {
+    const b = pending[i];
+    const endpoint = endpointFor(String(b.format ?? "ugc"));
+    try {
+      const r = await fetch(`${baseUrl}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          briefId: b.id,
-          personaName: personaName.get(b.persona_id) ?? "",
-        }),
-      }).then(async r => {
-        if (!r.ok) {
-          const text = await r.text();
-          throw new Error(`brief ${b.id} via ${endpoint}: HTTP ${r.status} ${text.slice(0, 200)}`);
-        }
-        return r.json();
+        body: JSON.stringify({ briefId: b.id, personaName: personaName.get(b.persona_id) ?? "" }),
       });
-    })
-  );
-
-  const okCount   = results.filter(r => r.status === "fulfilled").length;
-  const failCount = results.filter(r => r.status === "rejected").length;
-  const errors    = results
-    .filter((r): r is PromiseRejectedResult => r.status === "rejected")
-    .map(r => String(r.reason).slice(0, 200))
-    .slice(0, 10);
+      if (r.ok) { submitted++; continue; }
+      const text = await r.text();
+      if (/concurrent/i.test(text)) { deferred = pending.length - submitted; break; } // слоты заняты
+      errors.push(`brief ${b.id}: HTTP ${r.status} ${text.slice(0, 150)}`);
+    } catch (e) {
+      errors.push(`brief ${b.id}: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
 
   return NextResponse.json({
     ok: true,
     total: briefs.length,
-    succeeded: okCount,
-    failed: failCount,
-    errors,
+    alreadyDone: succeeded.size,
+    submitted,
+    deferred,
+    errors: errors.slice(0, 10),
+    done: deferred === 0 && errors.length === 0,
   });
 }
