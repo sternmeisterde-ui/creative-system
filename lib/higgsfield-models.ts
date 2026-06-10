@@ -1,9 +1,10 @@
 export type ModelCategory = "text-to-image" | "text-to-video";
 
 export interface HiggsfieldModel {
-  slug: string;           // API endpoint path
+  slug: string;           // API endpoint path (Higgsfield) или id модели (Gemini)
   label: string;          // UI display name
   category: ModelCategory;
+  provider?: "higgsfield" | "gemini";  // по умолчанию higgsfield; gemini = image через Google API
   buildBody: (prompt: string) => Record<string, unknown>;
 }
 
@@ -32,7 +33,24 @@ const klingBase = (prompt: string) => ({
 // ── Model registry ────────────────────────────────────────────────────────────
 
 export const HIGGSFIELD_MODELS: HiggsfieldModel[] = [
-  // Text-to-Image
+  // Text-to-Image — Google Gemini (nano-banana) через наш GEMINI_API_KEY (НЕ Higgsfield).
+  // Хорошо рендерит текст, в т.ч. кириллицу. buildBody для gemini не используется
+  // (роут creative-gen/generate вызывает Gemini image API напрямую и грузит в Storage).
+  {
+    slug: "gemini-2.5-flash-image",
+    label: "Nano Banana (Gemini 2.5 Flash Image)",
+    category: "text-to-image",
+    provider: "gemini",
+    buildBody: (prompt) => ({ prompt }),
+  },
+  {
+    slug: "gemini-3-pro-image-preview",
+    label: "Gemini 3 Pro Image (preview)",
+    category: "text-to-image",
+    provider: "gemini",
+    buildBody: (prompt) => ({ prompt }),
+  },
+  // Text-to-Image — Higgsfield (developer API). nano-banana* удалены (404), живы soul/*.
   {
     slug: "nano-banana-v2",
     label: "Nano Banana Pro 2",
@@ -99,8 +117,8 @@ export function findModel(slug: string): HiggsfieldModel | undefined {
   return HIGGSFIELD_MODELS.find(m => m.slug === slug);
 }
 
-// ВНИМАНИЕ: модели nano-banana* удалены из Higgsfield (404 "Model not found", июнь 2026).
-// Живые text-to-image: higgsfield-ai/soul/{standard,character,reference}. Дефолт — soul/standard.
-export const DEFAULT_STATIC_MODEL = "higgsfield-ai/soul/standard";
+// Дефолт статики — Gemini nano-banana (хорошо рендерит русский текст), через GEMINI_API_KEY.
+// Higgsfield-soul оставлен в реестре как fallback (плохо с текстом). nano-banana* у Higgsfield мертвы (404).
+export const DEFAULT_STATIC_MODEL = "gemini-2.5-flash-image";
 // Kling 2.6 Pro — лучшее качество видео в Higgsfield (платная, не в unlimited).
 export const DEFAULT_VIDEO_MODEL  = "kling-video/v2.6/pro/text-to-video";

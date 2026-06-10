@@ -9,6 +9,7 @@ import {
   TEXT_TO_IMAGE_MODELS,
 } from "@/lib/higgsfield-models";
 import { getBusiness } from "@/lib/brief";
+import { generateCreativeImage } from "@/lib/gemini-image";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
@@ -173,6 +174,24 @@ export async function POST(req: NextRequest) {
 
   if (insertErr) return NextResponse.json({ error: insertErr.message }, { status: 500 });
   const genId = gen.id as string;
+
+  // ── Gemini (nano-banana): синхронно генерим картинку и грузим в Storage ──
+  if (modelDef.provider === "gemini") {
+    try {
+      const { buffer, mimeType } = await generateCreativeImage(slug, prompt);
+      const path = `${genId}.${mimeType.includes("jpeg") ? "jpg" : "png"}`;
+      const { error: upErr } = await supabase.storage.from("creatives")
+        .upload(path, buffer, { contentType: mimeType, upsert: true });
+      if (upErr) throw new Error(`Storage upload: ${upErr.message}`);
+      const resultUrl = supabase.storage.from("creatives").getPublicUrl(path).data.publicUrl;
+      await supabase.from("creative_generations").update({ status: "done", result_url: resultUrl }).eq("id", genId);
+      return NextResponse.json({ ok: true, generationId: genId, model: slug, isStatic: true, prompt, resultUrl });
+    } catch (e: unknown) {
+      const message = e instanceof Error ? e.message : String(e);
+      await supabase.from("creative_generations").update({ status: "error", error_message: message }).eq("id", genId);
+      return NextResponse.json({ error: message }, { status: 502 });
+    }
+  }
 
   try {
     const job = await callHiggsfield(slug, body);
