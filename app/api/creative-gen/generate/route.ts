@@ -61,7 +61,29 @@ async function generatePromptWithClaude(brief: Record<string, unknown> & { perso
   const formatHint = isStatic ? "static ad banner" : "vertical video ad (9:16)";
 
   const instruction = isStatic
-    ? `Write a concise image generation prompt for ${modelHint} (${formatHint}). Max 2000 characters. English only, include Russian ad text as-is. Cover: background color, layout (TOP/MIDDLE/BOTTOM), fonts, exact Russian text from brief, minimalist high-contrast style. NO quotes. Only the prompt.`
+    ? `Собери HIGH-END промт для nano-banana (Google Gemini image): фотореалистичный ПРЕМИАЛЬНЫЙ статичный креатив, вертикаль 1080x1350. Верни ТОЛЬКО финальный промт (без преамбулы, без кавычек). Английский описывает сцену; русский рекламный текст вставляется ДОСЛОВНО в подписанные блоки.
+
+Структура РОВНО такая:
+
+Photorealistic premium educational static creative, vertical format 1080x1350.
+
+Scene composition: <выбери спокойную премиальную ФОТОРЕАЛИСТИЧНУЮ сцену под персону/энгл из брифа — современный домашний офис, профессиональная женщина 30-50, редакционный натюрморт, мягкая реальная среда; опиши фон, объекты, настроение. НЕ плоский минимализм, НЕ клипарт, НЕ мистика.>
+
+Lighting: soft daylight, gentle cinematic contrast, premium editorial, no harsh sun.
+
+Top headline (large white bold CAPS): <короткий русский заголовок из Хука брифа, ≤8 слов>
+Body text (white, regular weight, comfortable line spacing): <2-4 КОРОТКИЕ русские строки из Боди/оффера: суть + пруф (Сертификат DEKRA, 7 месяцев онлайн, на русском) + цифра результата (зарплата/срок)>
+Bottom CTA question (large white bold CAPS): <короткий русский вопрос-CTA, ≤4 слова>
+
+Typography: clean premium sans-serif (Manrope or Roboto). Headline ~38pt bold CAPS, body ~28pt regular, CTA ~42pt bold CAPS. All text white #FFFFFF with subtle semi-transparent soft shadow for readability over the photo.
+
+Color palette: muted premium tones fitting the scene.
+
+Rendering: high-end editorial photography, photorealistic, soft cinematic depth, natural light, minimalist luxury aesthetic.
+
+Critical: premium, mature, trustworthy (аудитория — см. Персона в брифе). Avoid cheap/guru/clipart/mystical style. RENDER THE RUSSIAN TEXT EXACTLY — точная орфография, без искажённых или выдуманных слов.
+
+ЖЁСТКО: русский текст копируй ДОСЛОВНО из брифа (не переводить, не перефразировать). Блоки делай КОРОТКИМИ. Только финальный промт.`
     : `Write a concise video generation prompt for ${modelHint} (${formatHint}). Max 2000 characters. Describe: main character (appearance, emotion), scene/location, action, lighting, camera (handheld iPhone style, no gimbal), dialogue in Russian (no dashes), no on-screen text. NO quotes. Only the prompt.`;
 
   const msg = await anthropic.messages.create({
