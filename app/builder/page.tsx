@@ -134,6 +134,7 @@ function BuilderContent() {
   const [packSize, setPackSize] = useState(20);
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [gate, setGate] = useState<{ overall: string; error: string; issues: { model: string; severity: string; area: string; detail: string }[] } | null>(null);
 
   const [currentSessionId, setCurrentSessionId] = useState<string | null>(null);
   const [currentPack, setCurrentPack] = useState<PackMetadata | null>(null);
@@ -147,8 +148,9 @@ function BuilderContent() {
     }).catch(() => {});
   }, [currentSessionId]);
 
-  const handleGenerate = async () => {
+  const handleGenerate = async (override = false) => {
     setError(null);
+    setGate(null);
     setGenerating(true);
     setCurrentPack(null);
     setCurrentSessionId(null);
@@ -156,10 +158,13 @@ function BuilderContent() {
       const res = await fetch("/api/pack/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ flow, format, packSize }),
+        body: JSON.stringify({ flow, format, packSize, override }),
       });
       const data = await res.json();
-      if (!res.ok) {
+      if (res.status === 409 && data.gate) {
+        // Гейт проверки: warning → подтверждение, fail → блок (оба обходятся override).
+        setGate({ overall: data.gate, error: data.error ?? "", issues: data.issues ?? [] });
+      } else if (!res.ok) {
         setError(data.error ?? `HTTP ${res.status}`);
       } else {
         setCurrentSessionId(data.sessionId);
@@ -259,7 +264,7 @@ function BuilderContent() {
           </div>
 
           <div style={{ marginLeft: "auto" }}>
-            <Button onClick={handleGenerate} disabled={generating}>
+            <Button onClick={() => handleGenerate()} disabled={generating}>
               {generating ? "⏳ Генерация… (1-3 мин)" : `🚀 Сгенерировать пак (${packSize})`}
             </Button>
           </div>
@@ -269,6 +274,30 @@ function BuilderContent() {
       {error && (
         <Card style={{ marginBottom: 16, borderColor: "rgba(217,107,107,0.3)" }}>
           <div style={{ fontSize: 12, color: "#D96B6B" }}>⚠️ {error}</div>
+        </Card>
+      )}
+
+      {gate && (
+        <Card style={{ marginBottom: 16, borderColor: gate.overall === "fail" ? "#D96B6B55" : "#FF8B5A55", background: gate.overall === "fail" ? "#D96B6B0A" : "#FF8B5A0A" }}>
+          <div style={{ fontWeight: 700, fontSize: 14, color: gate.overall === "fail" ? "#D96B6B" : "#FF8B5A", marginBottom: 6 }}>
+            {gate.overall === "fail" ? "⛔ Проверка отчёта НЕ пройдена — генерация заблокирована" : "⚠️ Проверка отчёта с сомнениями"}
+          </div>
+          <div style={{ fontSize: 12, color: "#BBB", lineHeight: 1.6, marginBottom: 10 }}>
+            {gate.overall === "fail"
+              ? "Последний отчёт провалил AI-проверку (Gemini/Codex). Генерация пака на этих данных рискованна — лучше перегенерируй отчёт. Детали ниже."
+              : "Последний отчёт прошёл с замечаниями. Можно продолжить, но проверь детали ниже."}
+            {" "}<Link href="/report" style={{ color: "#48B8D0" }}>Открыть отчёт →</Link>
+          </div>
+          {gate.issues.slice(0, 6).map((it, i) => (
+            <div key={i} style={{ fontSize: 11, color: "#AAA", marginTop: 4, paddingLeft: 10, borderLeft: `2px solid ${it.severity === "high" ? "#D96B6B" : it.severity === "medium" ? "#FF8B5A" : "#888"}` }}>
+              <b style={{ color: "#CCC" }}>[{it.model}] {it.area}</b> — {it.detail}
+            </div>
+          ))}
+          <div style={{ marginTop: 12 }}>
+            <Button size="sm" variant="ghost" onClick={() => handleGenerate(true)} disabled={generating}>
+              {gate.overall === "fail" ? "Сгенерировать принудительно" : "Продолжить генерацию"}
+            </Button>
+          </div>
         </Card>
       )}
 

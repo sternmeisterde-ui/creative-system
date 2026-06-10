@@ -44,6 +44,7 @@ interface RequestBody {
   flow:     AdFlow;
   format:   Format;
   packSize?: number;
+  override?: boolean;   // обойти гейт проверки отчёта (warning/fail)
 }
 
 interface CodeRow { code: string | null; name: string; description?: string | null }
@@ -57,6 +58,31 @@ export async function POST(req: NextRequest) {
   }
 
   const supabase = createServiceClient();
+
+  // ── Гейт проверки: не строим пак на данных, которым проверка отчёта не доверяет ──
+  // overall=ok → пускаем; warning → нужно подтверждение (override); fail → блок (override).
+  if (!body.override) {
+    const { data: rep } = await supabase
+      .from("analysis_reports").select("verifications")
+      .eq("flow", "all").order("created_at", { ascending: false }).limit(1).maybeSingle();
+    const v = (rep?.verifications ?? null) as {
+      overall?: string;
+      checks?: { model: string; issues?: { severity: string; area: string; detail: string }[] }[];
+    } | null;
+    const overall = v?.overall;
+    if (overall === "fail" || overall === "warning") {
+      const issues = (v?.checks ?? [])
+        .flatMap(c => (c.issues ?? []).map(i => ({ model: c.model, severity: i.severity, area: i.area, detail: i.detail })))
+        .slice(0, 12);
+      return NextResponse.json({
+        error: overall === "fail"
+          ? "Проверка отчёта НЕ пройдена — генерация заблокирована. Перегенерируй отчёт или подтверди принудительно."
+          : "Проверка отчёта с сомнениями — подтверди генерацию.",
+        gate: overall, overall, issues,
+      }, { status: 409 });
+    }
+  }
+
   const settings = await getSettings();
 
   // ── 1. Подгружаем библиотеку (все P/H/B/A) ─────────────────────────────────
