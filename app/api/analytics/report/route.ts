@@ -197,8 +197,17 @@ export async function POST(req: NextRequest) {
 
   const visual: ReportVisual = { helps, hurts, families, combos, competitors };
 
-  // 4. Нарратив (один Opus-проход)
-  const narrative = await buildNarrative({ flow, business, settings, perf, kpi, visual });
+  // 4. Описания крео (Gemini, mode=creative_desc) — контент для контекста нарратива
+  const { data: descRows } = await supabase
+    .from("gemini_analyses").select("ad_name, analysis").eq("mode", "creative_desc").not("ad_name", "is", null);
+  const descriptions = new Map<string, string>();
+  for (const d of (descRows ?? []) as { ad_name: string; analysis: string }[]) {
+    const key = (d.ad_name ?? "").trim().toLowerCase();
+    if (key && d.analysis && !descriptions.has(key)) descriptions.set(key, d.analysis);
+  }
+
+  // 5. Нарратив (один Opus-проход)
+  const narrative = await buildNarrative({ flow, business, settings, perf, kpi, visual, descriptions });
 
   // 5. Две независимые проверки (Gemini + Codex/OpenAI) — аудит чисел и выводов
   const verifications = await buildVerifications({ settings, kpi, visual, perf, narrative });
@@ -222,8 +231,15 @@ async function buildNarrative(args: {
   perf: PerfRow[];
   kpi: ReportKpi;
   visual: ReportVisual;
+  descriptions: Map<string, string>;
 }): Promise<string> {
-  const { flow, business, settings, perf, kpi, visual } = args;
+  const { flow, business, settings, perf, kpi, visual, descriptions } = args;
+  const kk = (s: string) => (s ?? "").trim().toLowerCase();
+  // Описание содержания крео (Gemini) — добавляем к строке, если есть.
+  const descOf = (r: PerfRow) => {
+    const d = descriptions.get(kk(r.ad_name));
+    return d ? `\n    ↳ контент: ${d.replace(/\s+/g, " ").slice(0, 220)}` : "";
+  };
   const winners     = perf.filter(r => r.auto_status === "winner");
   const fakeWinners = perf.filter(r => r.auto_status === "fake_winner");
   const losers      = perf.filter(r => r.auto_status === "loser");
@@ -248,13 +264,13 @@ ${getAiContext()}
 ${totalsBlock(perf)}
 
 ## НАСТОЯЩИЕ ВИННЕРЫ (${winners.length})
-${winners.slice(0, 15).map(r => `• ${r.ad_name} | CPL ${eur(r.cpl)} | CPQL ${eur(r.cpql)} | CR ${r.cr_lead_to_qual?.toFixed(0) ?? "—"}% | ROAS ${r.roas?.toFixed(2) ?? "—"}`).join("\n") || "Виннеров нет."}
+${winners.slice(0, 15).map(r => `• ${r.ad_name} | CPL ${eur(r.cpl)} | CPQL ${eur(r.cpql)} | CR ${r.cr_lead_to_qual?.toFixed(0) ?? "—"}% | ROAS ${r.roas?.toFixed(2) ?? "—"}${descOf(r)}`).join("\n") || "Виннеров нет."}
 
 ## ⚠️ FAKE-WINNERS — замаскированные убытки (${fakeWinners.length})
-${fakeWinners.slice(0, 12).map(r => `• ${r.ad_name} | spend €${num(r.spend).toFixed(0)} | CPL ${eur(r.cpl)} | CR ${r.cr_lead_to_qual?.toFixed(0) ?? "—"}% | ROAS ${r.roas?.toFixed(2) ?? "—"} | ⚑ ${fmtRisk(r.risk_signals)}`).join("\n") || "Опасных виннеров нет."}
+${fakeWinners.slice(0, 12).map(r => `• ${r.ad_name} | spend €${num(r.spend).toFixed(0)} | CPL ${eur(r.cpl)} | CR ${r.cr_lead_to_qual?.toFixed(0) ?? "—"}% | ROAS ${r.roas?.toFixed(2) ?? "—"} | ⚑ ${fmtRisk(r.risk_signals)}${descOf(r)}`).join("\n") || "Опасных виннеров нет."}
 
 ## ЛУЗЕРЫ (${losers.length})
-${losers.slice(0, 10).map(r => `• ${r.ad_name} | CPL ${eur(r.cpl)} | €${num(r.spend).toFixed(0)} спенд`).join("\n") || "Лузеров нет."}
+${losers.slice(0, 10).map(r => `• ${r.ad_name} | CPL ${eur(r.cpl)} | €${num(r.spend).toFixed(0)} спенд${descOf(r)}`).join("\n") || "Лузеров нет."}
 
 ## БИВАРИАТ — что помогает / вредит (по всему массиву)
 HELPS (снижают CPL): ${visual.helps.map(sig).join("; ") || "—"}
@@ -273,11 +289,12 @@ ${visual.competitors.map(c => `• [${c.type ?? "—"}] ${c.title}${c.hook ? ` �
 - Коды P/H/B/A отдельных креативов НЕ даны — НЕ приписывай конкретному объявлению код наугад. Ссылайся на креатив по его ad_name. Коды (CS#/H#/B#/A#) используй ТОЛЬКО те, что реально есть в секциях HELPS/HURTS/СЕМЬИ/КОМБО.
 - Любая связка кодов в рекомендациях должна опираться на HELPS/СЕМЬИ/КОМБО выше, а не на догадку.
 - Списки виннеров/fake/лузеров — это СРЕЗ (top-N), НЕ весь массив. Не делай выводов «минимальный/максимальный во всём массиве» или «X несёт основную нагрузку» на основе среза — говори только о показанных строках.
+- У части строк есть «↳ контент:» — описание содержания крео от Gemini (хук, формат, оффер, визуал). ОПИРАЙСЯ на него: выводы «что работает / что не работает» формулируй через реальный контент (какие хуки/форматы/офферы у виннеров vs лузеров), а не только через коды и метрики. Не выдумывай контент сверх описанного.
 
 Дай структурированный анализ на русском (markdown, секции через "### "):
 
 ### 1. Что реально работает
-Паттерны только настоящих виннеров (НЕ fake). Какие коды из HELPS/СЕМЬИ повторяются у виннеров; виннеров называй по ad_name.
+Паттерны настоящих виннеров (НЕ fake): какие коды из HELPS/СЕМЬИ повторяются + ЧТО ОБЩЕГО В КОНТЕНТЕ (хуки/форматы/офферы по описаниям «↳ контент»). Виннеров называй по ad_name.
 
 ### 2. ⚠️ Опасные fake-winners
 Где замаскированы убытки. Топ самых дорогих fake по сигналам и бюджету. Какие параметры тянут в fake-категорию.
