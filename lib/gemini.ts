@@ -105,7 +105,9 @@ export async function describeCreative(assetUrl: string): Promise<string> {
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       contents: [{ parts: [{ text: DESC_PROMPT }, { file_data: { mime_type: mimeType, file_uri: fileUri } }] }],
-      generationConfig: { temperature: 0.3, maxOutputTokens: 2048 },
+      // На видео gemini-2.5-flash тратит много на "thinking" → даём большой бюджет и
+      // отключаем thinking, чтобы output не обрезался на 1-й секции (был баг: 270 симв).
+      generationConfig: { temperature: 0.3, maxOutputTokens: 8192, thinkingConfig: { thinkingBudget: 0 } },
     }),
   });
   if (!res.ok) throw new Error(`Gemini error: ${await res.text()}`);
