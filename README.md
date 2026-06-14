@@ -1,36 +1,29 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# SternMeister Creative System
 
-## Getting Started
+Внутренний инструмент производства и анализа рекламных креативов (Meta Ads, далее — мультиплатформа). Next.js 16 (App Router) + Supabase + Anthropic/Gemini/OpenAI + Higgsfield.
 
-First, run the development server:
-
+## Запуск
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+npm run dev   # http://localhost:3000
 ```
+Секреты — в `.env.local` (не коммитится). Деплой — Vercel (`README-DEPLOY.md`).
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Производственный цикл
+`данные (Meta/TikTok + Elly) → маппинг → Gemini-разбор крео → отчёт (+ AI-проверка Gemini/Codex) → гейт → генерация пака → брифы → продакшен (Gemini image / Higgsfield)`. Кнопка «Прогнать цикл» на `/panel`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Рекламные платформы (мультиплатформа)
+Источники рекламных данных абстрагированы (`lib/platforms.ts`). Статус — `GET /api/platforms`.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+| Платформа | Статус | Подключение |
+|-----------|--------|-------------|
+| **Meta Ads** | ✅ рабочая | `META_ACCESS_TOKEN`, `META_AD_ACCOUNT_ID_COM`, `META_AD_ACCOUNT_ID_GOV`. Синк: `POST /api/meta/sync`, креативы: `/api/meta/creatives` |
+| **TikTok Ads** | 🟡 каркас | задать `TIKTOK_ACCESS_TOKEN` + `TIKTOK_ADVERTISER_ID` → активируется `POST /api/tiktok/sync` |
 
-## Learn More
+Данные обеих платформ живут в `meta_ads`/`meta_creatives` с колонкой `platform` (миграция 022). TikTok-синк (`app/api/tiktok/sync`) — каркас под TikTok Business (Marketing) API: без кредов отдаёт 503; при активации сверить точные endpoint/поля с [TikTok docs](https://business-api.tiktok.com/portal/docs).
 
-To learn more about Next.js, take a look at the following resources:
+## Ключевые env
+`NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `ANTHROPIC_API_KEY`, `GEMINI_API_KEY`, `OPENAI_API_KEY`, `META_ACCESS_TOKEN`, `PLURIO_API_KEY`, `HIGGSFIELD_API_KEY_ID/SECRET`, (опц.) `TIKTOK_ACCESS_TOKEN`/`TIKTOK_ADVERTISER_ID`.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Миграции
+`supabase/migrations/*.sql` — применяются вручную в Supabase SQL editor.
