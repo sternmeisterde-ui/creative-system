@@ -45,11 +45,18 @@ export async function POST(req: NextRequest) {
     ? `\nКОНТЕКСТ ИЗ АНАЛИЗА ВИННЕРОВ И ЛУЗЕРОВ (используй эти паттерны при генерации брифов):\n${analyses.map(a => `[${a.mode.toUpperCase()}]: ${a.analysis}`).join("\n\n---\n\n")}\n`
     : "";
 
-  const combinations: { personaId: string; hookId: string; bodyId: string; angleId: string }[] = [];
+  type Combo = {
+    personaId: string; hookId: string; bodyId: string; angleId: string;
+    category?: string; basedOnAd?: string; variedParam?: string; fromWinners?: string[];
+  };
+  const combinations: Combo[] = [];
 
   // Pack-mode: session создана через /api/pack/generate → берём готовые слоты.
   // Конвертируем коды P/H/B/A → uuids через библиотеку.
-  const packMeta = (session as { packMetadata?: { slots: Array<{ codes: { persona: string | null; hook: string | null; body: string | null; angle: string | null } }> } }).packMetadata;
+  const packMeta = (session as { packMetadata?: { slots: Array<{
+    codes: { persona: string | null; hook: string | null; body: string | null; angle: string | null };
+    category?: string; basedOnAd?: string; variedParam?: string; fromWinners?: string[];
+  }> } }).packMetadata;
   if (packMeta?.slots?.length) {
     const codeToId = (rows: Array<{ id: string; code?: string | null }>) =>
       new Map(rows.filter(r => r.code).map(r => [r.code as string, r.id]));
@@ -64,7 +71,10 @@ export async function POST(req: NextRequest) {
       const bodyId    = slot.codes.body    ? bByCode.get(slot.codes.body)    : undefined;
       const angleId   = slot.codes.angle   ? aByCode.get(slot.codes.angle)   : undefined;
       if (!personaId || !hookId || !bodyId || !angleId) continue; // пропускаем неполный слот
-      combinations.push({ personaId, hookId, bodyId, angleId });
+      combinations.push({
+        personaId, hookId, bodyId, angleId,
+        category: slot.category, basedOnAd: slot.basedOnAd, variedParam: slot.variedParam, fromWinners: slot.fromWinners,
+      });
     }
   } else {
     // Legacy mode: ручной матричный конструктор (декартово произведение).
@@ -78,6 +88,27 @@ export async function POST(req: NextRequest) {
   if (combinations.length === 0) {
     return new NextResponse(JSON.stringify({ error: "No combinations to generate. Session has neither pack_metadata.slots nor selected_* arrays." }), { status: 400 });
   }
+
+  // Исполнение виннеров-доноров (Gemini-описание контента) → наследуем при размножении.
+  const donorNames = Array.from(new Set(
+    combinations.flatMap(c => [c.basedOnAd, ...(c.fromWinners ?? [])]).filter((n): n is string => !!n)
+  ));
+  const donorDesc = new Map<string, string>();
+  if (donorNames.length > 0) {
+    const { data: descs } = await supabase
+      .from("gemini_analyses").select("ad_name, analysis").eq("mode", "creative_desc").in("ad_name", donorNames);
+    for (const d of (descs ?? []) as { ad_name: string; analysis: string }[]) {
+      const key = (d.ad_name ?? "").trim().toLowerCase();
+      if (key && d.analysis && !donorDesc.has(key)) donorDesc.set(key, d.analysis);
+    }
+  }
+  const execOf = (c: Combo): string => {
+    const names = [c.basedOnAd, ...(c.fromWinners ?? [])].filter((n): n is string => !!n);
+    const parts = names.map(n => donorDesc.get(n.trim().toLowerCase())).filter(Boolean);
+    if (parts.length === 0) return "";
+    const vary = c.variedParam ? ` Меняй ТОЛЬКО ${c.variedParam}; всё остальное исполнение (персонаж, сцену, визуал, динамику) СОХРАНИ.` : "";
+    return `\nИСПОЛНЕНИЕ ВИННЕРА-ДОНОРА (наследуй визуал/персонажа/сцену, не только коды):${vary}\n${parts.join("\n---\n")}`;
+  };
 
   // Один бриф = один вызов. Анализ:
   //   при BATCH=4 → max_tokens=16k → реально 60-180с per batch и truncation.
@@ -116,7 +147,7 @@ ${batch.map((combo, idx) => {
 Персона: ${persona?.name} (${persona?.gender || "?"}, ${persona?.age || "?"}). ${persona?.description || ""}${persona?.pointA ? ` Точка А: ${persona.pointA}` : ""}${persona?.pointB ? ` Точка Б: ${persona.pointB}` : ""}
 Хук: ${hook?.name}. Базовый сценарий: "${sMap[`hook_${combo.hookId}`] || hook?.template || ""}"
 Боди: ${body?.name}. Базовый сценарий: "${sMap[`body_${combo.bodyId}`] || body?.template || ""}"
-Энгл: ${angle?.name}. Базовый сценарий: "${sMap[`angle_${combo.angleId}`] || angle?.template || ""}"`;
+Энгл: ${angle?.name}. Базовый сценарий: "${sMap[`angle_${combo.angleId}`] || angle?.template || ""}"${execOf(combo)}`;
 }).join("\n\n")}
 
 Для fullBrief используй СТРОГО этот формат (секции разделены ---):
