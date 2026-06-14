@@ -71,10 +71,26 @@ async function uploadToFilesApi(buffer: ArrayBuffer, mimeType: string, displayNa
   throw new Error("Файл не стал ACTIVE за 60с");
 }
 
-// Резолв прямой ссылки на видео из Meta по video_id (временный CDN-URL).
+// Page access token (кешируем): рекламные видео — это Reels страницы, и source
+// отдаётся только PAGE-токеном (не system-user токеном). Страница назначена системному
+// пользователю → токен страницы получаем из me/accounts.
+let _pageToken: string | null = null;
+async function getPageToken(): Promise<string | null> {
+  if (_pageToken) return _pageToken;
+  if (!META_TOKEN) return null;
+  try {
+    const res = await fetch(`https://graph.facebook.com/v21.0/me/accounts?fields=access_token&access_token=${META_TOKEN}`);
+    const j = await res.json() as { data?: { access_token?: string }[] };
+    _pageToken = j.data?.[0]?.access_token ?? null;
+  } catch { _pageToken = null; }
+  return _pageToken;
+}
+
+// Резолв прямой ссылки на видео (.mp4) из Meta по video_id (временный CDN-URL).
 export async function resolveMetaVideoSource(videoId: string): Promise<string | null> {
   if (!META_TOKEN) return null;
-  const res = await fetch(`https://graph.facebook.com/v21.0/${videoId}?fields=source&access_token=${META_TOKEN}`);
+  const token = (await getPageToken()) ?? META_TOKEN; // page-токен открывает source у Reels
+  const res = await fetch(`https://graph.facebook.com/v21.0/${videoId}?fields=source&access_token=${token}`);
   const json = await res.json() as { source?: string; error?: unknown };
   return json.source ?? null;
 }
