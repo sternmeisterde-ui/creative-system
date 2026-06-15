@@ -48,6 +48,12 @@ interface Alert {
   createdAt: string;
 }
 
+interface Platform {
+  id: string;
+  label: string;
+  configured: boolean;
+}
+
 const TARGET_CPL = 20;
 const TARGET_CPQL = 28;
 
@@ -92,6 +98,7 @@ export default function PanelPage() {
   const [analysisOpen, setAnalysisOpen] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [syncPhase, setSyncPhase] = useState<"meta" | "elly" | "done" | null>(null);
+  const [platforms, setPlatforms] = useState<Platform[]>([]);
 
   const loadAlerts = async () => {
     const res = await fetch("/api/alerts/check?list=1");
@@ -264,6 +271,14 @@ export default function PanelPage() {
 
   useEffect(() => { load(); }, [flow]);
 
+  // Статус рекламных платформ (Meta/TikTok) — грузим один раз.
+  useEffect(() => {
+    fetch("/api/platforms")
+      .then(r => r.json())
+      .then(d => setPlatforms(d.platforms ?? []))
+      .catch(() => { /* блок просто не покажется */ });
+  }, []);
+
   const winners = rows.filter(r => r.autoStatus === "winner");
   const fakeWinners = rows.filter(r => r.autoStatus === "fake_winner");
   const losers = rows.filter(r => r.autoStatus === "loser");
@@ -347,6 +362,27 @@ export default function PanelPage() {
           </div>
         }
       />
+
+      {/* Статус рекламных платформ */}
+      {platforms.length > 0 && (
+        <Card style={{ marginBottom: 16 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 20, flexWrap: "wrap" }}>
+            <span style={{ fontSize: 11, fontWeight: 700, color: "#666", textTransform: "uppercase", letterSpacing: 1 }}>
+              Платформы
+            </span>
+            {platforms.map(p => (
+              <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ width: 8, height: 8, borderRadius: "50%", background: p.configured ? "#6EC8A0" : "#555", flexShrink: 0 }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: p.configured ? "#DDD" : "#777" }}>{p.label}</span>
+                <Badge color={p.configured ? "#6EC8A0" : "#888"}>{p.configured ? "подключена" : "не настроена"}</Badge>
+              </div>
+            ))}
+            <span style={{ fontSize: 11, color: "#555", marginLeft: "auto" }}>
+              TikTok активируется заданием TIKTOK_ACCESS_TOKEN + TIKTOK_ADVERTISER_ID
+            </span>
+          </div>
+        </Card>
+      )}
 
       <div style={{ marginBottom: 16 }}><CycleRunner /></div>
 
