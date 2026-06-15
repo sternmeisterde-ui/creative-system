@@ -1,17 +1,23 @@
 /**
  * POST /api/pack/produce
  *
- * Запускает Higgsfield-генерацию для всех брифов пакетной сессии разом.
- * Внутри для каждого approved-брифа делает fire-and-forget вызов
- * /api/creative-gen/generate. Возвращает сразу — генерация идёт async
- * (Higgsfield принимает job, выполняет в своей очереди).
+ * Запускает генерацию для всех approved-брифов пакетной сессии.
+ * Для каждого брифа вызывает /api/creative-gen/generate (статика, Gemini, синхронно)
+ * или /api/creative-gen/generate-scenes (видео, Higgsfield). Вызовы идут
+ * ПАРАЛЛЕЛЬНО через пул с ограничением одновременности:
+ *   • статика (Gemini) — лимита нет, пул 6 → весь пак из 10 успевает за один прогон;
+ *   • видео (Higgsfield) — жёсткий лимит 4 активных задачи, пул 4; что не влезло,
+ *     помечается deferred и дошлётся повторным прогоном (идемпотентно).
+ *
+ * Раньше цикл был ПОСЛЕДОВАТЕЛЬНЫМ при maxDuration=60: синхронная Gemini-статика
+ * (~30с/крео) не успевала — функцию убивало на ~4-м креативе (баг «4/10»).
  *
  * Body: { sessionId: string }
  */
 import { NextRequest, NextResponse } from "next/server";
 import { createServiceClient } from "@/lib/supabase";
 
-export const maxDuration = 60;
+export const maxDuration = 300;
 
 export async function POST(req: NextRequest) {
   const { sessionId } = await req.json() as { sessionId: string };
@@ -65,28 +71,42 @@ export async function POST(req: NextRequest) {
   const endpointFor = (fmt: string) =>
     STATIC_FORMATS.has(fmt) ? "/api/creative-gen/generate" : "/api/creative-gen/generate-scenes";
 
-  // Higgsfield: лимит 4 активных задачи. Шлём ПОСЛЕДОВАТЕЛЬНО; как упёрлись в лимит
-  // ("Maximum number of concurrent requests") — стоп, остаток дошлётся следующим
-  // вызовом по мере освобождения слотов. Так не плодим дубли и не теряем брифы.
-  let submitted = 0, deferred = 0;
+  // Параллельный пул. Статика (Gemini) не имеет лимита одновременности → пул 6,
+  // весь пак из 10 успевает за один прогон. Видео (Higgsfield) — жёсткий лимит 4
+  // активных задачи → пул 4; что не влезло (ответ "concurrent"), помечаем deferred
+  // и дошлём повторным прогоном (идемпотентно, без дублей).
+  const allStatic = pending.every(b => STATIC_FORMATS.has(String(b.format ?? "ugc")));
+  const concurrency = Math.min(allStatic ? 6 : 4, pending.length);
+
+  let submitted = 0, deferred = 0, failed = 0;
   const errors: string[] = [];
-  for (let i = 0; i < pending.length; i++) {
-    const b = pending[i];
-    const endpoint = endpointFor(String(b.format ?? "ugc"));
-    try {
-      const r = await fetch(`${baseUrl}${endpoint}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ briefId: b.id, personaName: personaName.get(b.persona_id) ?? "" }),
-      });
-      if (r.ok) { submitted++; continue; }
-      const text = await r.text();
-      if (/concurrent/i.test(text)) { deferred = pending.length - submitted; break; } // слоты заняты
-      errors.push(`brief ${b.id}: HTTP ${r.status} ${text.slice(0, 150)}`);
-    } catch (e) {
-      errors.push(`brief ${b.id}: ${e instanceof Error ? e.message : String(e)}`);
+  let next = 0;
+
+  const worker = async () => {
+    while (true) {
+      const i = next++;
+      if (i >= pending.length) return;
+      const b = pending[i];
+      const endpoint = endpointFor(String(b.format ?? "ugc"));
+      try {
+        const r = await fetch(`${baseUrl}${endpoint}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ briefId: b.id, personaName: personaName.get(b.persona_id) ?? "" }),
+        });
+        if (r.ok) { submitted++; continue; }
+        const text = await r.text();
+        if (/concurrent/i.test(text)) { deferred++; continue; } // слот Higgsfield занят — дошлём повторным прогоном
+        failed++;
+        errors.push(`brief ${b.id}: HTTP ${r.status} ${text.slice(0, 150)}`);
+      } catch (e) {
+        failed++;
+        errors.push(`brief ${b.id}: ${e instanceof Error ? e.message : String(e)}`);
+      }
     }
-  }
+  };
+
+  await Promise.all(Array.from({ length: concurrency }, worker));
 
   return NextResponse.json({
     ok: true,
@@ -94,7 +114,8 @@ export async function POST(req: NextRequest) {
     alreadyDone: succeeded.size,
     submitted,
     deferred,
+    failed,
     errors: errors.slice(0, 10),
-    done: deferred === 0 && errors.length === 0,
+    done: deferred === 0 && failed === 0,
   });
 }

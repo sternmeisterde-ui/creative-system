@@ -682,13 +682,13 @@ function BriefsContent() {
                     if (!d.ok) { alert(`Ошибка: ${d.error ?? "unknown"}`); return; }
                     startPipelinePolling();
                     const left = d.deferred ?? 0;
-                    setPipelineStatus(`Ушло в Higgsfield: ${d.submitted} · ранее: ${d.alreadyDone} · осталось: ${left} из ${d.total}`);
+                    setPipelineStatus(`В производстве: ${d.submitted} · ранее: ${d.alreadyDone} · отложено: ${left} из ${d.total}`);
                     if (d.errors?.length) {
-                      alert(`Ушло ${d.submitted}/${d.total}. Ошибки (${d.errors.length}):\n${d.errors[0]}`);
+                      alert(`Ушло ${d.submitted}/${d.total}, ошибок ${d.failed ?? d.errors.length}:\n${d.errors[0]}\n\nНажми «(Пере)запустить» — успешные не дублируются, повторятся только упавшие.`);
                     } else if (d.done) {
                       alert(`✅ Все ${d.total} крео в производстве. Следи в /creatives.`);
                     } else {
-                      alert(`Ушло ${d.submitted}, осталось ${left} из ${d.total}.\n\nЛимит Higgsfield — 4 одновременных задачи. Нажми «(Пере)запустить производство» ещё раз, когда первые догенерятся — дубли НЕ создаются (идемпотентно).`);
+                      alert(`Ушло ${d.submitted}, отложено ${left} из ${d.total}.\n\nЭто видео-крео: лимит Higgsfield — 4 одновременных задачи. Нажми «(Пере)запустить производство» ещё раз, когда первые догенерятся — дубли НЕ создаются (идемпотентно). Статика так не упирается.`);
                     }
                   } finally {
                     setBusy(false);

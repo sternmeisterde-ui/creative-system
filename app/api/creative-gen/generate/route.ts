@@ -11,6 +11,10 @@ import {
 import { getBusiness } from "@/lib/brief";
 import { generateCreativeImage } from "@/lib/gemini-image";
 
+// Один креатив: статика (Gemini, синхронно, с ретраями ×4) может занять до ~90с.
+// Даём запас, чтобы produce-пул не упирался в таймаут отдельной генерации.
+export const maxDuration = 120;
+
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const HIGGSFIELD_API    = process.env.HIGGSFIELD_API_URL ?? "https://platform.higgsfield.ai";
