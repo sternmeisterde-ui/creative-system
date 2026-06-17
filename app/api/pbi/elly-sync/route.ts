@@ -136,15 +136,27 @@ function parseViz(text: string): EllyRow[] | null {
   try {
     const viz = JSON.parse(m[1]);
     if (viz.type !== "Table" || !Array.isArray(viz.data)) return null;
-    return viz.data.map((r: Record<string, unknown>) => ({
-      date:      parseDate(r.Date ?? r.date),
-      adId:      String(r.AdId ?? r.adId ?? ""),
-      adName:    String(r.AdName ?? r.adName ?? ""),
-      leads:     parseNum(r.Leads ?? r.leads),
-      qualLeads: parseNum(r.QL ?? r.qualLeads ?? r.qual_leads),
-      spend:     parseNum(r["Adv Spend"] ?? r.spend ?? r.Spend),
-      revenue:   parseNum(r.Revenue ?? r.revenue ?? 0),
-    })).filter((r: EllyRow) => r.adName);
+    // Заголовки Plurio варьируются: "Revenue" vs "Revenue (€)", "Adv Spend (€)" и т.п.
+    // Ищем по НОРМАЛИЗОВАННОМУ ключу (lower + только буквы/цифры), иначе суффикс
+    // "(€)" ломал чтение (revenue молча падал в 0 — баг Google CRM-синка).
+    const norm = (s: string) => s.toLowerCase().replace(/[^a-zа-я0-9]/gi, "");
+    return viz.data.map((r: Record<string, unknown>) => {
+      const map: Record<string, unknown> = {};
+      for (const k of Object.keys(r)) map[norm(k)] = r[k];
+      const get = (...keys: string[]) => {
+        for (const k of keys) { const v = map[norm(k)]; if (v !== undefined) return v; }
+        return undefined;
+      };
+      return {
+        date:      parseDate(get("Date")),
+        adId:      String(get("AdId", "id") ?? ""),
+        adName:    String(get("AdName", "name") ?? ""),
+        leads:     parseNum(get("Leads")),
+        qualLeads: parseNum(get("QL", "qualLeads", "qual_leads")),
+        spend:     parseNum(get("Adv Spend", "spend")),
+        revenue:   parseNum(get("Revenue")),
+      };
+    }).filter((r: EllyRow) => r.adName);
   } catch { return null; }
 }
 
