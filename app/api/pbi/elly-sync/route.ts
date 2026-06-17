@@ -322,23 +322,29 @@ async function pollChatMessages(chatId: string, pollDeadline: number): Promise<E
 
 // ── Main sync ─────────────────────────────────────────────────────────────────
 
-async function syncElly(dateFrom: string, dateTo: string): Promise<EllyRow[]> {
+async function syncElly(dateFrom: string, dateTo: string, source: "meta" | "google" = "meta"): Promise<EllyRow[]> {
   if (!PLURIO_KEY) throw new Error("PLURIO_API_KEY не задан");
 
   const { sse, sessionUrl } = await mcpConnect();
 
-  // LIFETIME-агрегат на ad_id (НЕ дневная разбивка). Plurio даёт корректный итог
-  // на уровне ad_id; дневная разбивка для quiz-адов раздувала лиды ~7x (см. ниже),
-  // а для /report нужен тотал лидов на креатив на момент отчёта.
-  const question =
-    `Дай СУММАРНЫЕ (агрегат за весь период ${dateFrom} — ${dateTo}, БЕЗ разбивки по дням) показатели ` +
-    `по объявлениям (ad level) из Facebook and Instagram. ОДНА строка на КАЖДЫЙ AdId — суммы за весь период, не по дням. ` +
-    `Колонки строго: AdId, AdName, сумма Leads, сумма QL, сумма Adv Spend, сумма Revenue. ` +
-    `Включи ВСЕ объявления, у которых Leads > 0 (без top-N ограничения, без обрезки). ` +
-    `Фильтр: AttributionType = 'Leads Last Ad Click', SourceGroupName = 'Facebook and Instagram'. ` +
+  // LIFETIME-агрегат (НЕ дневная разбивка). Plurio даёт корректный итог; дневная
+  // разбивка для quiz-адов раздувала лиды ~7x. Для Meta — на уровне AdId; для
+  // Google (PMax) AdId=NULL, поэтому агрегат на уровне КАМПАНИИ (CampaignName
+  // совпадает с ad_name в meta_ads, по нему вид и джойнит).
+  const tail =
+    `Включи ВСЕ строки, у которых Leads > 0 (без top-N ограничения, без обрезки). ` +
     `Верни ОДНУ markdown-таблицу со всеми строками. Если строк слишком много для inline — отдай TSV-файл, ` +
     `но обязательно укажи ПОЛНУЮ presigned URL в формате https://...sql-query-result-*.tsv?... в тексте ответа. ` +
     `Без преамбулы.`;
+  const question = source === "google"
+    ? `Дай СУММАРНЫЕ (агрегат за весь период ${dateFrom} — ${dateTo}, БЕЗ разбивки по дням) показатели ` +
+      `по КАМПАНИЯМ из Google Ads. ОДНА строка на КАЖДУЮ кампанию — суммы за весь период. ` +
+      `Колонки строго: AdId (= CampaignId), AdName (= CampaignName), сумма Leads, сумма QL, сумма Adv Spend, сумма Revenue. ` +
+      `Фильтр: AttributionType = 'Leads Last Ad Click', SourceGroupName = 'Google Ads'. ` + tail
+    : `Дай СУММАРНЫЕ (агрегат за весь период ${dateFrom} — ${dateTo}, БЕЗ разбивки по дням) показатели ` +
+      `по объявлениям (ad level) из Facebook and Instagram. ОДНА строка на КАЖДЫЙ AdId — суммы за весь период, не по дням. ` +
+      `Колонки строго: AdId, AdName, сумма Leads, сумма QL, сумма Adv Spend, сумма Revenue. ` +
+      `Фильтр: AttributionType = 'Leads Last Ad Click', SourceGroupName = 'Facebook and Instagram'. ` + tail;
 
   await rpc(sessionUrl, 2, "tools/call", {
     name: "ask_plurio",
@@ -392,14 +398,16 @@ export async function POST(req: NextRequest) {
 
   // LIFETIME-режим: по умолчанию тянем агрегат за ВСЁ время (с запасом от 2024-01-01),
   // одна строка на ad_id. dateTo = сегодня. Можно переопределить телом запроса.
-  const body = await req.json().catch(() => ({})) as { dateFrom?: string; dateTo?: string };
+  const body = await req.json().catch(() => ({})) as { dateFrom?: string; dateTo?: string; source?: "meta" | "google" };
+  const source = body.source === "google" ? "google" : "meta";
+  const prefix = source === "google" ? "google:" : "elly:";
   const today = new Date();
   const dateTo   = body.dateTo   ?? today.toISOString().slice(0, 10);
   const dateFrom = body.dateFrom ?? "2024-01-01";
 
   let rows: EllyRow[];
   try {
-    rows = await syncElly(dateFrom, dateTo);
+    rows = await syncElly(dateFrom, dateTo, source);
   } catch (e) {
     return NextResponse.json({ error: e instanceof Error ? e.message : String(e) }, { status: 502 });
   }
@@ -407,16 +415,16 @@ export async function POST(req: NextRequest) {
   const supabase = createServiceClient();
 
   // Полная замена: lifetime-агрегат — это снимок «итог на момент синка», одна строка
-  // на ad_id. Чистим ВСЕ elly-строки и пишем свежий снимок (дата = dateTo), чтобы
-  // во view был ровно один ряд на ad_id и sum(leads) по имени = корректный lifetime.
-  // (Дневной режим убран: суммирование дневных строк раздувало quiz-лиды ~7x.)
+  // на ключ. Чистим строки своего неймспейса (elly:% для Meta, google:% для Google —
+  // не пересекаются) и пишем свежий снимок (дата = dateTo), чтобы во view был ровно
+  // один ряд на ключ и sum(leads) по имени = корректный lifetime.
   await supabase
     .from("pbi_metrics")
     .delete()
-    .like("ad_id", "elly:%");
+    .like("ad_id", `${prefix}%`);
 
   const payload = rows.map(r => ({
-    ad_id:      `elly:${r.adId || r.adName.trim()}`,
+    ad_id:      `${prefix}${r.adId || r.adName.trim()}`,
     ad_name:    r.adName.trim(),
     date:       dateTo,
     leads:      Math.round(r.leads),

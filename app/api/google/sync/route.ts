@@ -9,9 +9,13 @@ import { googleAdsSearch, GOOGLE_CUSTOMER_ID } from "@/lib/google-ads";
 // отдельным ассетам/креативам. Campaign-level ловит 100% спенда (PMax + Search +
 // Demand Gen + Video) без двойного счёта.
 //
-// Пишем в meta_ads с platform='google': ad_id = `g<campaignId>` (неймспейс от Meta),
-// ad_name = имя кампании. Конверсии/выручка → pbi_metrics (вид creative_performance
-// сам посчитает CPL/ROAS). Поток (com/gov) — из имени кампании (comm → com, gov → gov).
+// Пишем в meta_ads с platform='google': ad_id = `google:<campaignId>`,
+// ad_name = имя кампании, спенд/показы/клики. Поток (com/gov) — из имени кампании.
+//
+// ЛИДЫ/ВЫРУЧКУ Google НЕ пишем здесь — источник правды это Elly/CRM (реальные сделки),
+// а не conversions_value Google. CRM-данные кладёт elly-sync (source='google') в
+// pbi_metrics с тем же `google:`-неймспейсом, матч по имени кампании. Так Google
+// считается так же, как Meta: спенд из meta_ads, лиды/выручка из Elly.
 //
 // P·H·B·A-бивариат к Google не применяется: имена кампаний не несут кодов, поэтому
 // эти строки видны в панели/тоталах, но в код-сплиты не попадают (codes = null).
@@ -58,7 +62,6 @@ export async function POST(req: NextRequest) {
   }
 
   const adRows: Record<string, unknown>[] = [];
-  const convRows: Record<string, unknown>[] = [];
   const byChannelType: Record<string, number> = {};
   let totalSpend = 0;
 
@@ -71,7 +74,6 @@ export async function POST(req: NextRequest) {
     const impressions = Number(m.impressions ?? 0);
     const clicks = Number(m.clicks ?? 0);
     const conversions = Number(m.conversions ?? 0);
-    const revenue = Number(m.conversionsValue ?? 0);
     const type = r.campaign?.advertisingChannelType ?? "UNKNOWN";
 
     // Пропускаем кампании без активности за период — не плодим пустые строки.
@@ -97,44 +99,28 @@ export async function POST(req: NextRequest) {
       ctr: impressions ? (clicks / impressions) * 100 : 0,
       cpc: clicks ? spend / clicks : 0,
     });
-
-    if (conversions > 0 || revenue > 0) {
-      convRows.push({
-        ad_id: adId,
-        ad_name: campName || adId,
-        date: dateTo,
-        leads: Math.round(conversions),
-        revenue,
-      });
-    }
   }
 
   const supabase = createServiceClient();
   let metaErr: string | null = null;
-  let pbiErr: string | null = null;
 
   if (adRows.length) {
     const { error } = await supabase.from("meta_ads").upsert(adRows, { onConflict: "ad_id,date" });
     metaErr = error?.message ?? null;
   }
-  if (convRows.length) {
-    const { error } = await supabase.from("pbi_metrics").upsert(convRows, { onConflict: "ad_id,date" });
-    pbiErr = error?.message ?? null;
-  }
 
   return NextResponse.json({
-    ok: !metaErr && !pbiErr,
+    ok: !metaErr,
     platform: "google",
     grain: "campaign",
     dateFrom,
     dateTo,
     fetched: rows.length,
     syncedCampaigns: adRows.length,
-    syncedConversions: convRows.length,
     totalSpend: Math.round(totalSpend),
     byChannelType,
     metaErr,
-    pbiErr,
+    note: "Лиды/выручка Google приходят из Elly (elly-sync source=google), не из Google API.",
   });
 }
 
