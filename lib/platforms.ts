@@ -1,8 +1,8 @@
 // Реестр рекламных платформ (мультиплатформенный каркас).
-// Meta Ads — рабочая интеграция. TikTok Ads — каркас: активируется, когда заданы
-// TIKTOK_ACCESS_TOKEN + TIKTOK_ADVERTISER_ID (см. /api/tiktok/sync).
+// Meta Ads и Google Ads — рабочие интеграции. TikTok Ads — каркас: активируется,
+// когда заданы TIKTOK_ACCESS_TOKEN + TIKTOK_ADVERTISER_ID (см. /api/tiktok/sync).
 
-export type AdPlatform = "meta" | "tiktok";
+export type AdPlatform = "meta" | "tiktok" | "google";
 
 export interface PlatformInfo {
   id: AdPlatform;
@@ -13,6 +13,18 @@ export interface PlatformInfo {
 export function getPlatforms(): PlatformInfo[] {
   return [
     { id: "meta", label: "Meta Ads", configured: !!process.env.META_ACCESS_TOKEN },
+    {
+      id: "google",
+      label: "Google Ads",
+      configured: !!(
+        process.env.GOOGLE_ADS_DEVELOPER_TOKEN &&
+        process.env.GOOGLE_ADS_CLIENT_ID &&
+        process.env.GOOGLE_ADS_CLIENT_SECRET &&
+        process.env.GOOGLE_ADS_REFRESH_TOKEN &&
+        process.env.GOOGLE_ADS_LOGIN_CUSTOMER_ID &&
+        process.env.GOOGLE_ADS_CUSTOMER_ID
+      ),
+    },
     {
       id: "tiktok",
       label: "TikTok Ads",
