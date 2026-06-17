@@ -80,7 +80,7 @@ export async function POST(req: NextRequest) {
     byChannelType[type] = (byChannelType[type] ?? 0) + 1;
     totalSpend += spend;
 
-    const adId = `g${campId}`; // неймспейс, чтобы не пересечься с числовыми ad_id Meta
+    const adId = `google:${campId}`; // неймспейс (как elly:%) — вид creative_performance фильтрует pbi по нему
     adRows.push({
       ad_id: adId,
       ad_name: campName || adId,
