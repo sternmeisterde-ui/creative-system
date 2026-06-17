@@ -338,8 +338,10 @@ async function syncElly(dateFrom: string, dateTo: string, source: "meta" | "goog
     `Без преамбулы.`;
   const question = source === "google"
     ? `Дай СУММАРНЫЕ (агрегат за весь период ${dateFrom} — ${dateTo}, БЕЗ разбивки по дням) показатели ` +
-      `по КАМПАНИЯМ из Google Ads. ОДНА строка на КАЖДУЮ кампанию — суммы за весь период. ` +
+      `по КАМПАНИЯМ из Google Ads, разбивка по CampaignName (group by CampaignName). ОДНА строка на КАЖДУЮ кампанию. ` +
       `Колонки строго: AdId (= CampaignId), AdName (= CampaignName), сумма Leads, сумма QL, сумма Adv Spend, сумма Revenue. ` +
+      `ОБЯЗАТЕЛЬНО включи столбец Revenue — это когортная выручка (следует за лидом), она РАЗБИВАЕТСЯ по кампаниям; ` +
+      `не возвращай Revenue=0, если у кампании есть оплаты. Включи ВСЕ кампании, где Leads > 0 ИЛИ Revenue > 0. ` +
       `Фильтр: AttributionType = 'Leads Last Ad Click', SourceGroupName = 'Google Ads'. ` + tail
     : `Дай СУММАРНЫЕ (агрегат за весь период ${dateFrom} — ${dateTo}, БЕЗ разбивки по дням) показатели ` +
       `по объявлениям (ad level) из Facebook and Instagram. ОДНА строка на КАЖДЫЙ AdId — суммы за весь период, не по дням. ` +
