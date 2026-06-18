@@ -8,6 +8,7 @@ const NAV = [
   { href: "/panel", label: "Приборная панель", icon: "📡" },
   { href: "/pbi", label: "Загрузка PBI", icon: "📊" },
   { href: "/mapping", label: "Маппинг объявлений", icon: "🗂" },
+  { href: "/mapping/google", label: "Маппинг Google", icon: "🟢" },
   { href: "/library", label: "Библиотека", icon: "📚" },
   { href: "/database", label: "База данных", icon: "🗄" },
   { href: "/report", label: "Отчёт", icon: "🧠" },
