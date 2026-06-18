@@ -41,10 +41,12 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  // LIFETIME по умолчанию (как elly-sync): спенд за весь период, чтобы совпадал с
+  // lifetime-лидами/выручкой из Elly → корректные CPL/ROAS. Окно можно переопределить телом.
   const body = await req.json().catch(() => ({})) as { dateFrom?: string; dateTo?: string };
   const today = new Date();
   const dateTo = body.dateTo ?? today.toISOString().slice(0, 10);
-  const dateFrom = body.dateFrom ?? new Date(today.getTime() - 30 * 864e5).toISOString().slice(0, 10);
+  const dateFrom = body.dateFrom ?? "2024-01-01";
 
   // Агрегированно по кампании за период (без segments.date → суммы по окну).
   const query = `
@@ -103,6 +105,11 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceClient();
   let metaErr: string | null = null;
+
+  // ПОЛНАЯ ЗАМЕНА (как elly-sync): lifetime-аггрегат = один снимок-итог на кампанию.
+  // Чистим все google-строки и пишем свежий снимок (дата = dateTo), иначе ежедневный
+  // синк копил бы по строке на дату и view суммировал бы спенд многократно.
+  await supabase.from("meta_ads").delete().eq("platform", "google");
 
   if (adRows.length) {
     const { error } = await supabase.from("meta_ads").upsert(adRows, { onConflict: "ad_id,date" });
