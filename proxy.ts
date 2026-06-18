@@ -13,7 +13,11 @@ export async function proxy(request: NextRequest) {
   }
 
   try {
-    const payload = JSON.parse(atob(token.split(".")[1]));
+    // JWT payload — base64URL (символы - и _), а atob() понимает только обычный base64.
+    // Без конвертации atob кидает InvalidCharacterError → юзера выбрасывало на /login,
+    // хотя логин прошёл и токен валиден (зависело от того, есть ли -/_ в payload).
+    const seg = (token.split(".")[1] ?? "").replace(/-/g, "+").replace(/_/g, "/");
+    const payload = JSON.parse(atob(seg + "=".repeat((4 - (seg.length % 4)) % 4)));
     if (payload.exp && payload.exp * 1000 < Date.now()) {
       return NextResponse.redirect(new URL("/login", request.url), { status: 302 });
     }
