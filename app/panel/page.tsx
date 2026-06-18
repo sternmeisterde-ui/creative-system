@@ -81,6 +81,7 @@ export default function PanelPage() {
   const [rows, setRows] = useState<CreativePerformance[]>([]);
   const [loading, setLoading] = useState(true);
   const [flow, setFlow] = useState<AdFlow | "all">("all");
+  const [channel, setChannel] = useState<string>("all");
   const [lastSync, setLastSync] = useState<string | null>(null);
   const [paramStats, setParamStats] = useState<ParamStats | null>(null);
   const [alerts, setAlerts] = useState<Alert[]>([]);
@@ -230,6 +231,7 @@ export default function PanelPage() {
     setLoading(true);
     let q = supabase.from("creative_performance").select("*");
     if (flow !== "all") q = q.eq("flow", flow);
+    if (channel !== "all") q = q.eq("platform", channel);
     const { data } = await q.order("spend", { ascending: false });
     setRows((data ?? []).map((r: Record<string, unknown>) => ({
       adId:           r.ad_id,
@@ -294,7 +296,7 @@ export default function PanelPage() {
     setLoading(false);
   };
 
-  useEffect(() => { load(); }, [flow]);
+  useEffect(() => { load(); }, [flow, channel]);
 
   // Статус рекламных платформ (Meta/TikTok) — грузим один раз.
   useEffect(() => {
@@ -634,6 +636,22 @@ export default function PanelPage() {
             <div style={{ fontSize: 28, fontWeight: 800, color: s.color }}>{s.value}</div>
             <div style={{ fontSize: 11, color: "#555", marginTop: 4 }}>{s.label}</div>
           </Card>
+        ))}
+      </div>
+
+      {/* Фильтр канала (платформа) */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 12, alignItems: "center" }}>
+        <span style={{ fontSize: 11, color: "#555", textTransform: "uppercase", letterSpacing: 1, marginRight: 4 }}>Канал</span>
+        {[{ id: "all", label: "Все каналы" }, ...platforms.map(p => ({ id: p.id, label: p.label }))].map(c => (
+          <button key={c.id} onClick={() => setChannel(c.id)} style={{
+            padding: "7px 16px", borderRadius: 8, fontSize: 12,
+            fontWeight: channel === c.id ? 700 : 400, cursor: "pointer",
+            border: channel === c.id ? "1px solid rgba(72,184,208,0.4)" : "1px solid rgba(255,255,255,0.06)",
+            background: channel === c.id ? "rgba(72,184,208,0.12)" : "rgba(255,255,255,0.02)",
+            color: channel === c.id ? "#48B8D0" : "#666", fontFamily: "inherit",
+          }}>
+            {c.label}
+          </button>
         ))}
       </div>
 
