@@ -700,9 +700,9 @@ export default function PanelPage() {
                 {rows.map((row, i) => (
                   <tr key={row.adId ?? i} style={{ borderBottom: "1px solid rgba(255,255,255,0.03)" }}>
                     <td style={{ padding: "10px 14px" }}><StatusBadge row={row} /></td>
-                    <td style={{ padding: "10px 14px", maxWidth: 240, width: 240 }}>
-                      <div title={row.adName} style={{ fontSize: 12, fontWeight: 600, color: "#DDD", fontFamily: "monospace", maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.adName}</div>
-                      {row.campaignName && row.campaignName !== row.adName && <div title={row.campaignName} style={{ fontSize: 10, color: "#555", marginTop: 2, maxWidth: 240, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{row.campaignName}</div>}
+                    <td style={{ padding: "10px 14px", maxWidth: 280, width: 280 }}>
+                      <div title={row.adName} style={{ fontSize: 12, fontWeight: 600, color: "#DDD", fontFamily: "monospace", maxWidth: 280, whiteSpace: "normal", overflowWrap: "anywhere", lineHeight: 1.35 }}>{row.adName}</div>
+                      {row.campaignName && row.campaignName !== row.adName && <div title={row.campaignName} style={{ fontSize: 10, color: "#555", marginTop: 2, maxWidth: 280, whiteSpace: "normal", overflowWrap: "anywhere" }}>{row.campaignName}</div>}
                     </td>
                     <td style={{ padding: "10px 14px" }}>
                       <Badge color={row.flow === "com" ? "#E8AA42" : "#48B8D0"}>{row.flow?.toUpperCase() ?? "—"}</Badge>
