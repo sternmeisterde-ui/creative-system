@@ -5,8 +5,16 @@
       "schedule": "0 7 * * *"
     },
     {
+      "path": "/api/google/sync",
+      "schedule": "15 7 * * *"
+    },
+    {
       "path": "/api/pbi/elly-sync",
       "schedule": "0 8 * * *"
+    },
+    {
+      "path": "/api/google/crm-sync",
+      "schedule": "15 8 * * *"
     },
     {
       "path": "/api/alerts/check",

@@ -99,6 +99,7 @@ export default function PanelPage() {
   const [syncing, setSyncing] = useState(false);
   const [syncPhase, setSyncPhase] = useState<"meta" | "elly" | "done" | null>(null);
   const [platforms, setPlatforms] = useState<Platform[]>([]);
+  const [chanSync, setChanSync] = useState<Record<string, string | null>>({});
 
   const loadAlerts = async () => {
     const res = await fetch("/api/alerts/check?list=1");
@@ -153,6 +154,30 @@ export default function PanelPage() {
       if (res.ok) await loadAlerts();
     } finally {
       setPausing(null);
+    }
+  };
+
+  // По-канальный синк: каждая платформа тянется отдельно (реклама → CRM из Elly).
+  const syncChannel = async (id: string) => {
+    const J = (body: object) => ({ method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const set = (phase: string | null) => setChanSync(s => ({ ...s, [id]: phase }));
+    set("ads");
+    try {
+      if (id === "meta") {
+        await fetch("/api/meta/sync", J({}));
+        set("crm");
+        await fetch("/api/pbi/elly-sync", J({}));
+      } else if (id === "google") {
+        await fetch("/api/google/sync", J({}));
+        set("crm");
+        await fetch("/api/pbi/elly-sync", J({ source: "google" }));
+      }
+      set("done");
+      await load();
+      setTimeout(() => set(null), 2500);
+    } catch {
+      set("error");
+      setTimeout(() => set(null), 3000);
     }
   };
 
@@ -370,15 +395,24 @@ export default function PanelPage() {
             <span style={{ fontSize: 11, fontWeight: 700, color: "#666", textTransform: "uppercase", letterSpacing: 1 }}>
               Платформы
             </span>
-            {platforms.map(p => (
-              <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <span style={{ width: 8, height: 8, borderRadius: "50%", background: p.configured ? "#6EC8A0" : "#555", flexShrink: 0 }} />
-                <span style={{ fontSize: 13, fontWeight: 600, color: p.configured ? "#DDD" : "#777" }}>{p.label}</span>
-                <Badge color={p.configured ? "#6EC8A0" : "#888"}>{p.configured ? "подключена" : "не настроена"}</Badge>
-              </div>
-            ))}
+            {platforms.map(p => {
+              const ph = chanSync[p.id];
+              const busy = ph === "ads" || ph === "crm";
+              const label = ph === "ads" ? "⏳ Реклама…" : ph === "crm" ? "⏳ CRM…"
+                : ph === "done" ? "✓ Готово" : ph === "error" ? "✕ Ошибка" : "🔃 Синк";
+              return (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 8, height: 8, borderRadius: "50%", background: p.configured ? "#6EC8A0" : "#555", flexShrink: 0 }} />
+                  <span style={{ fontSize: 13, fontWeight: 600, color: p.configured ? "#DDD" : "#777" }}>{p.label}</span>
+                  <Badge color={p.configured ? "#6EC8A0" : "#888"}>{p.configured ? "подключена" : "не настроена"}</Badge>
+                  {p.configured && (
+                    <Button size="sm" variant="ghost" onClick={() => syncChannel(p.id)} disabled={busy}>{label}</Button>
+                  )}
+                </div>
+              );
+            })}
             <span style={{ fontSize: 11, color: "#555", marginLeft: "auto" }}>
-              TikTok активируется заданием TIKTOK_ACCESS_TOKEN + TIKTOK_ADVERTISER_ID
+              Каждый канал синкается отдельно: реклама → CRM (Elly). TikTok — задать TIKTOK_ACCESS_TOKEN + TIKTOK_ADVERTISER_ID
             </span>
           </div>
         </Card>

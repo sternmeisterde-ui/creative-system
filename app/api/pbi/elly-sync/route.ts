@@ -461,6 +461,12 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ ok: true, synced: payload.length, dateFrom, dateTo });
 }
 
-export async function GET() {
-  return POST(new NextRequest("http://localhost/api/pbi/elly-sync", { method: "POST", body: "{}" }));
+// Cron ходит GET'ом — прокидываем канал через ?source=google (по умолчанию meta).
+export async function GET(req: NextRequest) {
+  const source = new URL(req.url).searchParams.get("source") === "google" ? "google" : "meta";
+  return POST(new NextRequest("http://localhost/api/pbi/elly-sync", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source }),
+  }));
 }
