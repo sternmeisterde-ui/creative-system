@@ -78,8 +78,9 @@ export async function POST(req: NextRequest) {
         ctr:           parseFloat(String(r.ctr ?? 0)),
         cpc:           parseFloat(String(r.cpc ?? 0)),
         video_plays:    actionVal(r.video_play_actions),
-        // video_3s хранит 2-сек continuous (Meta-аналог 3-сек) — нумератор hook rate.
-        video_3s:       actionVal(r.video_continuous_2_sec_watched_actions),
+        // Нумератор hook rate: 2-сек continuous, а где Meta его не отдаёт (часто
+        // возвращает null) — откат на video_play_actions (плеи). hold = thruplay / video_3s.
+        video_3s:       actionVal(r.video_continuous_2_sec_watched_actions) || actionVal(r.video_play_actions),
         video_thruplay: actionVal(r.video_thruplay_watched_actions),
       }));
 
