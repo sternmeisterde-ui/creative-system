@@ -233,6 +233,9 @@ export interface CreativePerformance {
   cpm: number;
   ctr: number;
   cpc: number;
+  // Видео-метрики (Meta): hook rate = 3s/показы, hold rate = thruplay/3s. У статики null.
+  hookRate?: number | null;
+  holdRate?: number | null;
   // PBI метрики
   leads: number;
   qualLeads: number;

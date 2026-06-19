@@ -10,7 +10,15 @@ const FIELDS = [
   "ad_id", "ad_name", "adset_id", "adset_name", "campaign_id", "campaign_name",
   "spend", "impressions", "clicks", "reach", "frequency",
   "cpm", "ctr", "cpc",
+  // Видео-метрики для hook rate (3s/показы) и hold rate (thruplay/3s).
+  "video_play_actions", "video_3_sec_watched_actions", "video_thruplay_watched_actions",
 ].join(",");
+
+// Meta отдаёт action-метрики массивом [{action_type, value}] — суммируем value.
+function actionVal(arr: unknown): number {
+  if (!Array.isArray(arr)) return 0;
+  return arr.reduce((s: number, a) => s + (parseInt(String((a as { value?: string }).value ?? 0)) || 0), 0);
+}
 
 async function fetchAdInsights(accountId: string, dateFrom: string, dateTo: string) {
   const url = new URL(`https://graph.facebook.com/v21.0/${accountId}/insights`);
@@ -68,6 +76,9 @@ export async function POST(req: NextRequest) {
         cpm:           parseFloat(String(r.cpm ?? 0)),
         ctr:           parseFloat(String(r.ctr ?? 0)),
         cpc:           parseFloat(String(r.cpc ?? 0)),
+        video_plays:    actionVal(r.video_play_actions),
+        video_3s:       actionVal(r.video_3_sec_watched_actions),
+        video_thruplay: actionVal(r.video_thruplay_watched_actions),
       }));
 
       if (upsertRows.length > 0) {

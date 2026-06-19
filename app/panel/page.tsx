@@ -248,6 +248,8 @@ export default function PanelPage() {
       cpm:            r.cpm,
       ctr:            r.ctr,
       cpc:            r.cpc,
+      hookRate:       r.hook_rate,
+      holdRate:       r.hold_rate,
       leads:          r.leads,
       qualLeads:      r.qual_leads,
       revenue:        r.revenue,
@@ -689,7 +691,7 @@ export default function PanelPage() {
             <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
               <thead>
                 <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-                  {["Статус", "Объявление", "Поток", "Спенд", "Показы", "Клики", "CTR", "CPM", "Лиды", "CPL", "Квал.", "CPQL", "CR л→кв"].map(h => (
+                  {["Статус", "Объявление", "Поток", "Спенд", "Показы", "Клики", "CTR", "CPM", "Hook %", "Hold %", "Лиды", "CPL", "Квал.", "CPQL", "CR л→кв"].map(h => (
                     <th key={h} style={{ padding: "10px 14px", textAlign: "left", fontSize: 10, fontWeight: 700, color: "#555", textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" }}>
                       {h}
                     </th>
@@ -712,6 +714,8 @@ export default function PanelPage() {
                     <td style={{ padding: "10px 14px", color: "#AAA" }}>{row.clicks?.toLocaleString() ?? "—"}</td>
                     <td style={{ padding: "10px 14px", color: "#AAA" }}>{fmt(row.ctr)}%</td>
                     <td style={{ padding: "10px 14px", color: "#AAA" }}>€{fmt(row.cpm)}</td>
+                    <td style={{ padding: "10px 14px", color: row.hookRate != null ? "#48B8D0" : "#444", fontWeight: row.hookRate != null ? 700 : 400 }}>{row.hookRate != null ? `${fmt(row.hookRate, 1)}%` : "—"}</td>
+                    <td style={{ padding: "10px 14px", color: row.holdRate != null ? "#C490D1" : "#444", fontWeight: row.holdRate != null ? 700 : 400 }}>{row.holdRate != null ? `${fmt(row.holdRate, 1)}%` : "—"}</td>
                     <td style={{ padding: "10px 14px", color: "#AAA" }}>{row.leads ?? "—"}</td>
                     <td style={{ padding: "10px 14px" }}><MetricCell value={row.cpl} target={TARGET_CPL} /></td>
                     <td style={{ padding: "10px 14px", color: "#AAA" }}>{row.qualLeads ?? "—"}</td>
