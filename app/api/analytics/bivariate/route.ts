@@ -209,8 +209,11 @@ export async function GET() {
     let hVerdict: BivariateResult["verdict"] = "INSUFFICIENT";
     if (entry.paramType === "hook") {
       const sum = (arr: AdRow[], f: (a: AdRow) => number) => arr.reduce((s, a) => s + f(a), 0);
-      const wImpr = sum(withAds, a => a.impressions), w3s = sum(withAds, a => a.video3s), wThru = sum(withAds, a => a.videoThru);
-      const oImpr = sum(withoutAds, a => a.impressions), o3s = sum(withoutAds, a => a.video3s);
+      // ТОЛЬКО видео-крео (video3s > 0): статика плеев не даёт и разбавляла бы знаменатель
+      // (на массиве статика = 73% показов → hook rate занижался в ~3.7 раза).
+      const withVid = withAds.filter(a => a.video3s > 0), woutVid = withoutAds.filter(a => a.video3s > 0);
+      const wImpr = sum(withVid, a => a.impressions), w3s = sum(withVid, a => a.video3s), wThru = sum(withVid, a => a.videoThru);
+      const oImpr = sum(woutVid, a => a.impressions), o3s = sum(woutVid, a => a.video3s);
       const rate = (n: number, d: number) => d > 0 ? Math.round((n / d * 100) * 100) / 100 : null;
       withHookRate = rate(w3s, wImpr); withoutHookRate = rate(o3s, oImpr); withHoldRate = rate(wThru, w3s);
       hookRatio = withHookRate != null && withoutHookRate ? Math.round((withHookRate / withoutHookRate) * 1000) / 1000 : null;
