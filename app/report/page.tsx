@@ -3,7 +3,7 @@ import { useState, useEffect, useCallback } from "react";
 import dynamic from "next/dynamic";
 import { Card, PageHeader, Button, Badge, Stat, SectionTitle, Empty } from "@/components/ui";
 import { personaStore, hookStore, bodyStore, angleStore } from "@/lib/store";
-import type { AnalysisReport, ReportSignal, ReportFamily, ReportCombo, ReportCompetitor, ReportVerification, ReportVerifications } from "@/lib/types";
+import type { AnalysisReport, ReportSignal, ReportHookSignal, ReportFamily, ReportCombo, ReportCompetitor, ReportVerification, ReportVerifications } from "@/lib/types";
 
 // Метаданные параметра для тултипа на коде (P/H/B/A)
 type ParamInfo = { type: string; typeLabel: string; name: string; description?: string };
@@ -75,6 +75,19 @@ function Chip({ s, helps, paramInfo }: { s: ReportSignal; helps: boolean; paramI
       <CodeTag code={s.code} info={paramInfo[s.code]} color={c} />
       <span style={{ fontSize: 11, color: "#999", maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.label}</span>
       <span style={{ fontSize: 10, color: helps ? "#6EC8A0" : "#D96B6B", fontWeight: 700 }}>×{s.ratio?.toFixed(2) ?? "—"}</span>
+    </span>
+  );
+}
+
+function HookChip({ h, good, paramInfo }: { h: ReportHookSignal; good: boolean; paramInfo: Record<string, ParamInfo> }) {
+  const c = PARAM_COLOR[h.paramType] ?? "#888";
+  const edge = good ? "#48B8D0" : "#D96B6B";
+  return (
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 8, background: `${edge}14`, border: `1px solid ${edge}30` }}>
+      <CodeTag code={h.code} info={paramInfo[h.code]} color={c} />
+      <span style={{ fontSize: 11, color: "#48B8D0", fontWeight: 700 }}>{h.hookRate != null ? `${h.hookRate.toFixed(1)}%` : "—"}</span>
+      {h.holdRate != null && <span style={{ fontSize: 10, color: "#C490D1" }}>hold {h.holdRate.toFixed(0)}%</span>}
+      <span style={{ fontSize: 10, color: edge, fontWeight: 700 }}>×{h.ratio?.toFixed(2) ?? "—"}</span>
     </span>
   );
 }
@@ -267,6 +280,22 @@ export default function ReportPage() {
               {visual.hurts.length ? visual.hurts.map(s => <Chip key={s.code} s={s} helps={false} paramInfo={paramInfo} />) : <span style={{ color: "#555", fontSize: 12 }}>—</span>}
             </div>
           </Card>
+
+          {/* Hook rate — что цепляет (видео) */}
+          {((visual.hookHelps?.length ?? 0) > 0 || (visual.hookHurts?.length ?? 0) > 0) && (
+            <Card>
+              <SectionTitle icon="🎬" color="#48B8D0">Hook rate — что цепляет (видео: плеи/показы)</SectionTitle>
+              <div style={{ fontSize: 11, color: "#48B8D0", marginBottom: 8, fontWeight: 700 }}>ЦЕПЛЯЮТ — выше hook rate (×N vs остальные)</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+                {visual.hookHelps?.length ? visual.hookHelps.map(h => <HookChip key={h.code} h={h} good paramInfo={paramInfo} />) : <span style={{ color: "#555", fontSize: 12 }}>—</span>}
+              </div>
+              <div style={{ fontSize: 11, color: "#D96B6B", marginBottom: 8, fontWeight: 700 }}>НЕ ЦЕПЛЯЮТ — ниже hook rate</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
+                {visual.hookHurts?.length ? visual.hookHurts.map(h => <HookChip key={h.code} h={h} good={false} paramInfo={paramInfo} />) : <span style={{ color: "#555", fontSize: 12 }}>—</span>}
+              </div>
+              <p style={{ fontSize: 11, color: "#666", marginTop: 12, lineHeight: 1.5 }}>Hook rate и CPL — <b style={{ color: "#888" }}>разные оси</b>: код может цеплять (высокий hook), но давать дорогой лид — тогда чинить боди/оффер, а не хук. Метрика видео-крео (у статики прочерк).</p>
+            </Card>
+          )}
 
           {/* Семьи + комбо */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>

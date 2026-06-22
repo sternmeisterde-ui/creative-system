@@ -336,12 +336,23 @@ export interface ReportCompetitor {
   hook?: string;
 }
 
+export interface ReportHookSignal {    // hook rate по коду (плеи/показы)
+  code: string;
+  paramType: string;
+  label: string;
+  hookRate: number | null;
+  holdRate: number | null;
+  ratio: number | null;
+  verdict: string;
+}
 export interface ReportVisual {
   helps: ReportSignal[];
   hurts: ReportSignal[];
   families: ReportFamily[];
   combos: ReportCombo[];
   competitors: ReportCompetitor[];
+  hookHelps?: ReportHookSignal[];
+  hookHurts?: ReportHookSignal[];
 }
 
 // ── Проверка отчёта независимыми моделями (Gemini + Codex/OpenAI) ───────────────

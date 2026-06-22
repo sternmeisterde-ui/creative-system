@@ -15,7 +15,7 @@ import { createServiceClient } from "@/lib/supabase";
 import { getSettings } from "@/lib/settings";
 import { getAiContext, getBusiness } from "@/lib/brief";
 import type {
-  ReportKpi, ReportVisual, ReportSignal, ReportFamily, ReportCombo, ReportCompetitor,
+  ReportKpi, ReportVisual, ReportSignal, ReportHookSignal, ReportFamily, ReportCombo, ReportCompetitor,
   ReportVerification, ReportVerifications,
 } from "@/lib/types";
 
@@ -170,11 +170,15 @@ export async function POST(req: NextRequest) {
     .map(r => ({ code: r.code, paramType: r.paramType, label: r.label, ratio: r.ratio }));
 
   // Hook rate по кодам (плеи/показы) — отдельное измерение «цепляет ли», особенно хуки (H).
-  const hookSig = (r: BivResult) => `${r.code} (${r.paramType}, hook ${r.withHookRate?.toFixed(1) ?? "—"}%, ×${r.hookRatio?.toFixed(2) ?? "—"})`;
-  const hookHelps = bivResults.filter(r => r.hookVerdict === "HELPS" && r.withHookRate != null)
-    .sort((a, b) => (b.hookRatio ?? 0) - (a.hookRatio ?? 0)).slice(0, 8).map(hookSig);
-  const hookHurts = bivResults.filter(r => r.hookVerdict === "HURTS" && r.withHookRate != null)
-    .sort((a, b) => (a.hookRatio ?? 9) - (b.hookRatio ?? 9)).slice(0, 8).map(hookSig);
+  const toHook = (r: BivResult): ReportHookSignal => ({
+    code: r.code, paramType: r.paramType, label: r.label,
+    hookRate: r.withHookRate ?? null, holdRate: r.withHoldRate ?? null,
+    ratio: r.hookRatio ?? null, verdict: r.hookVerdict ?? "INSUFFICIENT",
+  });
+  const hookHelps: ReportHookSignal[] = bivResults.filter(r => r.hookVerdict === "HELPS" && r.withHookRate != null)
+    .sort((a, b) => (b.hookRatio ?? 0) - (a.hookRatio ?? 0)).slice(0, 10).map(toHook);
+  const hookHurts: ReportHookSignal[] = bivResults.filter(r => r.hookVerdict === "HURTS" && r.withHookRate != null)
+    .sort((a, b) => (a.hookRatio ?? 9) - (b.hookRatio ?? 9)).slice(0, 10).map(toHook);
 
   const families: ReportFamily[] = (biv?.families ?? []).slice(0, 8).map(f => ({
     varyingParam: f.varyingParam,
@@ -202,7 +206,7 @@ export async function POST(req: NextRequest) {
     .slice(0, 8)
     .map(({ title, type, hook }) => ({ title, type, hook }));
 
-  const visual: ReportVisual = { helps, hurts, families, combos, competitors };
+  const visual: ReportVisual = { helps, hurts, families, combos, competitors, hookHelps, hookHurts };
 
   // 4. Описания крео (Gemini, mode=creative_desc) — контент для контекста нарратива
   const { data: descRows } = await supabase
@@ -239,8 +243,8 @@ async function buildNarrative(args: {
   kpi: ReportKpi;
   visual: ReportVisual;
   descriptions: Map<string, string>;
-  hookHelps: string[];
-  hookHurts: string[];
+  hookHelps: ReportHookSignal[];
+  hookHurts: ReportHookSignal[];
 }): Promise<string> {
   const { flow, business, settings, perf, kpi, visual, descriptions, hookHelps, hookHurts } = args;
   const kk = (s: string) => (s ?? "").trim().toLowerCase();
@@ -286,8 +290,8 @@ HELPS (снижают CPL): ${visual.helps.map(sig).join("; ") || "—"}
 HURTS (повышают CPL): ${visual.hurts.map(sig).join("; ") || "—"}
 
 ## HOOK RATE — что цепляет (плеи/показы, ВЫШЕ=лучше; ×N = vs остальные)
-Цепляют (особенно смотри хуки H): ${hookHelps.join("; ") || "—"}
-Не цепляют: ${hookHurts.join("; ") || "—"}
+Цепляют (особенно смотри хуки H): ${hookHelps.map(h => `${h.code} (${h.paramType}, hook ${h.hookRate?.toFixed(1) ?? "—"}%, ×${h.ratio?.toFixed(2) ?? "—"})`).join("; ") || "—"}
+Не цепляют: ${hookHurts.map(h => `${h.code} (${h.paramType}, hook ${h.hookRate?.toFixed(1) ?? "—"}%, ×${h.ratio?.toFixed(2) ?? "—"})`).join("; ") || "—"}
 ВАЖНО: hook rate и CPL — РАЗНЫЕ оси. Код может цеплять (высокий hook), но давать дорогой лид, и наоборот. Сопоставь: если хук цепляет, но CPL высокий — проблема не в первых секундах, а дальше (боди/оффер). Если не цепляет и CPL дорогой — меняй хук.
 
 ## СЕМЬИ (фикс 3 кода, варьируется 1) — где один свап решает
