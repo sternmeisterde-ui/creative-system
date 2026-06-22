@@ -201,14 +201,21 @@ export async function GET() {
     const withoutCpl = blendedCpl(woutSpend, woutLeads);
     const ratio = withCpl != null && withoutCpl != null ? Math.round((withCpl / withoutCpl) * 1000) / 1000 : null;
 
-    // Hook/hold rate по группе: только видео-крео (video3s > 0), взвешенно по показам.
-    const sum = (arr: AdRow[], f: (a: AdRow) => number) => arr.reduce((s, a) => s + f(a), 0);
-    const wImpr = sum(withAds, a => a.impressions), w3s = sum(withAds, a => a.video3s), wThru = sum(withAds, a => a.videoThru);
-    const oImpr = sum(withoutAds, a => a.impressions), o3s = sum(withoutAds, a => a.video3s), oThru = sum(withoutAds, a => a.videoThru);
-    const rate = (n: number, d: number) => d > 0 ? Math.round((n / d * 100) * 100) / 100 : null;
-    const withHookRate = rate(w3s, wImpr), withoutHookRate = rate(o3s, oImpr);
-    const withHoldRate = rate(wThru, w3s);
-    const hookRatio = withHookRate != null && withoutHookRate ? Math.round((withHookRate / withoutHookRate) * 1000) / 1000 : null;
+    // Hook/hold rate считаем ТОЛЬКО для хуков (paramType === 'hook'). Hook rate —
+    // метрика первых секунд всего ролика; body/angle идут ПОСЛЕ хука и лишь наследуют
+    // чужой hook rate (конфаундинг), поэтому для них hook не считаем.
+    let withHookRate: number | null = null, withoutHookRate: number | null = null;
+    let withHoldRate: number | null = null, hookRatio: number | null = null;
+    let hVerdict: BivariateResult["verdict"] = "INSUFFICIENT";
+    if (entry.paramType === "hook") {
+      const sum = (arr: AdRow[], f: (a: AdRow) => number) => arr.reduce((s, a) => s + f(a), 0);
+      const wImpr = sum(withAds, a => a.impressions), w3s = sum(withAds, a => a.video3s), wThru = sum(withAds, a => a.videoThru);
+      const oImpr = sum(withoutAds, a => a.impressions), o3s = sum(withoutAds, a => a.video3s);
+      const rate = (n: number, d: number) => d > 0 ? Math.round((n / d * 100) * 100) / 100 : null;
+      withHookRate = rate(w3s, wImpr); withoutHookRate = rate(o3s, oImpr); withHoldRate = rate(wThru, w3s);
+      hookRatio = withHookRate != null && withoutHookRate ? Math.round((withHookRate / withoutHookRate) * 1000) / 1000 : null;
+      hVerdict = hookVerdict(hookRatio, wImpr, oImpr);
+    }
 
     const meta = labelMap[entry.code];
     results.push({
@@ -236,7 +243,7 @@ export async function GET() {
       withoutHookRate,
       withHoldRate,
       hookRatio,
-      hookVerdict: hookVerdict(hookRatio, wImpr, oImpr),
+      hookVerdict: hVerdict,
     });
   }
 
