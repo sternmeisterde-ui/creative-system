@@ -24,7 +24,7 @@ export const maxDuration = 120;
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 // ── типы ответов соседних роутов (минимально нужные поля) ──────────────────────
-interface BivResult { code: string; paramType: string; label: string; ratio: number | null; verdict: string }
+interface BivResult { code: string; paramType: string; label: string; ratio: number | null; verdict: string; withHookRate?: number | null; withHoldRate?: number | null; hookRatio?: number | null; hookVerdict?: string }
 interface BivFamily { varyingParam: string; sharedPersona?: string; sharedHook?: string; sharedBody?: string; sharedAngle?: string; bestCpl: number | null; worstCpl: number | null }
 interface ComboStat { codeA: string; codeB: string; winners: number; cpl: number | null; spend: number }
 interface PerfRow {
@@ -169,6 +169,13 @@ export async function POST(req: NextRequest) {
     .slice(0, 10)
     .map(r => ({ code: r.code, paramType: r.paramType, label: r.label, ratio: r.ratio }));
 
+  // Hook rate по кодам (плеи/показы) — отдельное измерение «цепляет ли», особенно хуки (H).
+  const hookSig = (r: BivResult) => `${r.code} (${r.paramType}, hook ${r.withHookRate?.toFixed(1) ?? "—"}%, ×${r.hookRatio?.toFixed(2) ?? "—"})`;
+  const hookHelps = bivResults.filter(r => r.hookVerdict === "HELPS" && r.withHookRate != null)
+    .sort((a, b) => (b.hookRatio ?? 0) - (a.hookRatio ?? 0)).slice(0, 8).map(hookSig);
+  const hookHurts = bivResults.filter(r => r.hookVerdict === "HURTS" && r.withHookRate != null)
+    .sort((a, b) => (a.hookRatio ?? 9) - (b.hookRatio ?? 9)).slice(0, 8).map(hookSig);
+
   const families: ReportFamily[] = (biv?.families ?? []).slice(0, 8).map(f => ({
     varyingParam: f.varyingParam,
     shared: [f.sharedPersona, f.sharedHook, f.sharedBody, f.sharedAngle].filter(Boolean).join(" "),
@@ -207,7 +214,7 @@ export async function POST(req: NextRequest) {
   }
 
   // 5. Нарратив (один Opus-проход)
-  const narrative = await buildNarrative({ flow, business, settings, perf, kpi, visual, descriptions });
+  const narrative = await buildNarrative({ flow, business, settings, perf, kpi, visual, descriptions, hookHelps, hookHurts });
 
   // 5. Две независимые проверки (Gemini + Codex/OpenAI) — аудит чисел и выводов
   const verifications = await buildVerifications({ settings, kpi, visual, perf, narrative });
@@ -232,8 +239,10 @@ async function buildNarrative(args: {
   kpi: ReportKpi;
   visual: ReportVisual;
   descriptions: Map<string, string>;
+  hookHelps: string[];
+  hookHurts: string[];
 }): Promise<string> {
-  const { flow, business, settings, perf, kpi, visual, descriptions } = args;
+  const { flow, business, settings, perf, kpi, visual, descriptions, hookHelps, hookHurts } = args;
   const kk = (s: string) => (s ?? "").trim().toLowerCase();
   // Описание содержания крео (Gemini) — добавляем к строке, если есть.
   const descOf = (r: PerfRow) => {
@@ -275,6 +284,11 @@ ${losers.slice(0, 10).map(r => `• ${r.ad_name} | CPL ${eur(r.cpl)} | €${num(
 ## БИВАРИАТ — что помогает / вредит (по всему массиву)
 HELPS (снижают CPL): ${visual.helps.map(sig).join("; ") || "—"}
 HURTS (повышают CPL): ${visual.hurts.map(sig).join("; ") || "—"}
+
+## HOOK RATE — что цепляет (плеи/показы, ВЫШЕ=лучше; ×N = vs остальные)
+Цепляют (особенно смотри хуки H): ${hookHelps.join("; ") || "—"}
+Не цепляют: ${hookHurts.join("; ") || "—"}
+ВАЖНО: hook rate и CPL — РАЗНЫЕ оси. Код может цеплять (высокий hook), но давать дорогой лид, и наоборот. Сопоставь: если хук цепляет, но CPL высокий — проблема не в первых секундах, а дальше (боди/оффер). Если не цепляет и CPL дорогой — меняй хук.
 
 ## СЕМЬИ (фикс 3 кода, варьируется 1) — где один свап решает
 ${visual.families.map(f => `• варьируется ${f.varyingParam} при [${f.shared}]: лучший CPL ${eur(f.bestCpl)} ↔ худший ${eur(f.worstCpl)} (разброс ${eur(f.spread)})`).join("\n") || "Семей недостаточно."}

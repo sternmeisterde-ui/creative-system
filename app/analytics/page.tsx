@@ -323,7 +323,7 @@ function BivariateTable({ results, filterType }: { results: BivariateResult[]; f
       <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
         <thead>
           <tr style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}>
-            {["Признак", "Тип", "С ним (n)", "CPL (X=1)", "Без (n)", "CPL (X=0)", "Ratio", "Вердикт"].map(h => (
+            {["Признак", "Тип", "С ним (n)", "CPL (X=1)", "Без (n)", "CPL (X=0)", "Ratio", "Вердикт", "Hook% / Hold%", "Hook"].map(h => (
               <th key={h} style={{ padding: "7px 12px", textAlign: h === "Признак" ? "left" : "right", fontSize: 10, fontWeight: 700, color: "#444", textTransform: "uppercase", letterSpacing: 0.5, whiteSpace: "nowrap" }}>{h}</th>
             ))}
           </tr>
@@ -359,6 +359,16 @@ function BivariateTable({ results, filterType }: { results: BivariateResult[]; f
                     fontSize: 10, fontWeight: 700, color: VERDICT_COLOR[r.verdict],
                     background: `${VERDICT_COLOR[r.verdict]}14`, padding: "3px 8px", borderRadius: 4, letterSpacing: 0.5,
                   }}>{VERDICT_LABEL[r.verdict]}</span>
+                </td>
+                <td style={{ padding: "9px 12px", textAlign: "right", fontSize: 11, color: r.withHookRate != null ? "#48B8D0" : "#333" }}>
+                  {r.withHookRate != null ? `${r.withHookRate.toFixed(1)}%` : "—"}
+                  {r.withHoldRate != null && <span style={{ color: "#C490D1" }}> / {r.withHoldRate.toFixed(1)}%</span>}
+                </td>
+                <td style={{ padding: "9px 12px", textAlign: "right" }}>
+                  <span title={r.hookRatio != null ? `hook ×${r.hookRatio.toFixed(2)} vs остальные` : "мало показов"} style={{
+                    fontSize: 10, fontWeight: 700, color: VERDICT_COLOR[r.hookVerdict],
+                    background: `${VERDICT_COLOR[r.hookVerdict]}14`, padding: "3px 8px", borderRadius: 4, letterSpacing: 0.5,
+                  }}>{VERDICT_LABEL[r.hookVerdict]}</span>
                 </td>
               </tr>
             );

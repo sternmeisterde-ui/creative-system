@@ -25,6 +25,13 @@ export interface BivariateResult {
   withoutLosers: number;
   ratio: number | null;
   verdict: "HELPS" | "HURTS" | "NEUTRAL" | "INSUFFICIENT";
+  // Hook rate (плеи/показы) — отдельное измерение «цепляет ли». Выше = лучше,
+  // поэтому вердикт инвертирован относительно CPL.
+  withHookRate: number | null;
+  withoutHookRate: number | null;
+  withHoldRate: number | null;
+  hookRatio: number | null;
+  hookVerdict: "HELPS" | "HURTS" | "NEUTRAL" | "INSUFFICIENT";
 }
 
 export interface FamilyMember {
@@ -67,13 +74,22 @@ function verdict(ratio: number | null, withLeads: number, withoutLeads: number):
   return "NEUTRAL";
 }
 
+// Hook rate: ВЫШЕ = лучше, поэтому пороги зеркальны CPL. Значимость — по показам
+// (нужен объём показов, а не лидов): минимум 1000 показов в каждой группе.
+function hookVerdict(ratio: number | null, withImpr: number, withoutImpr: number): BivariateResult["verdict"] {
+  if (ratio == null || withImpr < 1000 || withoutImpr < 1000) return "INSUFFICIENT";
+  if (ratio > 1.33) return "HELPS";
+  if (ratio < 0.75) return "HURTS";
+  return "NEUTRAL";
+}
+
 // ── GET /api/analytics/bivariate ─────────────────────────────────────────────
 
 export async function GET() {
   const supabase = createServiceClient();
 
   const [adsResult, mappingResult, personasResult, hooksResult, bodiesResult, anglesResult] = await Promise.all([
-    supabase.from("creative_performance").select("ad_name, spend, impressions, leads, qual_leads, auto_status").not("ad_name", "is", null),
+    supabase.from("creative_performance").select("ad_name, spend, impressions, leads, qual_leads, auto_status, video_3s, video_thruplay").not("ad_name", "is", null),
     supabase.from("ad_name_mapping").select("ad_name, persona_code, hook_code, body_code, angle_code, format, flow"),
     supabase.from("personas").select("code, name, color"),
     supabase.from("hooks").select("code, name, color"),
@@ -105,6 +121,9 @@ export async function GET() {
     flow: string | null;
     spend: number;
     leads: number;
+    impressions: number;
+    video3s: number;
+    videoThru: number;
     autoStatus: string;
   };
 
@@ -120,6 +139,9 @@ export async function GET() {
       flow: parts.flow?.toUpperCase() ?? null,
       spend: parseFloat(row.spend ?? 0),
       leads: parseInt(row.leads ?? 0),
+      impressions: parseInt(row.impressions ?? 0),
+      video3s: parseInt(row.video_3s ?? 0),
+      videoThru: parseInt(row.video_thruplay ?? 0),
       autoStatus: row.auto_status as string,
     };
   });
@@ -179,6 +201,15 @@ export async function GET() {
     const withoutCpl = blendedCpl(woutSpend, woutLeads);
     const ratio = withCpl != null && withoutCpl != null ? Math.round((withCpl / withoutCpl) * 1000) / 1000 : null;
 
+    // Hook/hold rate по группе: только видео-крео (video3s > 0), взвешенно по показам.
+    const sum = (arr: AdRow[], f: (a: AdRow) => number) => arr.reduce((s, a) => s + f(a), 0);
+    const wImpr = sum(withAds, a => a.impressions), w3s = sum(withAds, a => a.video3s), wThru = sum(withAds, a => a.videoThru);
+    const oImpr = sum(withoutAds, a => a.impressions), o3s = sum(withoutAds, a => a.video3s), oThru = sum(withoutAds, a => a.videoThru);
+    const rate = (n: number, d: number) => d > 0 ? Math.round((n / d * 100) * 100) / 100 : null;
+    const withHookRate = rate(w3s, wImpr), withoutHookRate = rate(o3s, oImpr);
+    const withHoldRate = rate(wThru, w3s);
+    const hookRatio = withHookRate != null && withoutHookRate ? Math.round((withHookRate / withoutHookRate) * 1000) / 1000 : null;
+
     const meta = labelMap[entry.code];
     results.push({
       code: entry.code,
@@ -201,6 +232,11 @@ export async function GET() {
       withoutLosers:      woutLosers,
       ratio,
       verdict: verdict(ratio, withLeads, woutLeads),
+      withHookRate,
+      withoutHookRate,
+      withHoldRate,
+      hookRatio,
+      hookVerdict: hookVerdict(hookRatio, wImpr, oImpr),
     });
   }
 
