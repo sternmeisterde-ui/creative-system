@@ -286,6 +286,15 @@ const VERDICT_COLOR: Record<string, string> = {
 const VERDICT_LABEL: Record<string, string> = {
   HELPS: "HELPS", HURTS: "HURTS", NEUTRAL: "NEUTRAL", INSUFFICIENT: "мало данных",
 };
+// Светофор-шкала hook rate (3-сек просмотры / показы).
+function hookBand(r: number | null | undefined): { color: string; label: string } {
+  if (r == null) return { color: "#333", label: "—" };
+  if (r >= 45) return { color: "#48B8D0", label: "Elite" };
+  if (r >= 35) return { color: "#6EC8A0", label: "Strong" };
+  if (r >= 25) return { color: "#E8AA42", label: "Solid" };
+  if (r >= 15) return { color: "#FF8B5A", label: "Workable" };
+  return { color: "#D96B6B", label: "Fix-it" };
+}
 
 function RatioBar({ ratio }: { ratio: number | null }) {
   if (ratio == null) return <span style={{ color: "#333", fontSize: 11 }}>—</span>;
@@ -360,9 +369,9 @@ function BivariateTable({ results, filterType }: { results: BivariateResult[]; f
                     background: `${VERDICT_COLOR[r.verdict]}14`, padding: "3px 8px", borderRadius: 4, letterSpacing: 0.5,
                   }}>{VERDICT_LABEL[r.verdict]}</span>
                 </td>
-                <td style={{ padding: "9px 12px", textAlign: "right", fontSize: 11, color: r.withHookRate != null ? "#48B8D0" : "#333" }}>
-                  {r.withHookRate != null ? `${r.withHookRate.toFixed(1)}%` : "—"}
-                  {r.withHoldRate != null && <span style={{ color: "#C490D1" }}> / {r.withHoldRate.toFixed(1)}%</span>}
+                <td style={{ padding: "9px 12px", textAlign: "right", fontSize: 11, whiteSpace: "nowrap" }}>
+                  {r.withHookRate != null ? (() => { const b = hookBand(r.withHookRate); return <span title={b.label} style={{ color: b.color, fontWeight: 700 }}>{r.withHookRate.toFixed(1)}% <span style={{ fontSize: 9, opacity: 0.85 }}>{b.label}</span></span>; })() : <span style={{ color: "#333" }}>—</span>}
+                  {r.withHoldRate != null && <span style={{ color: "#C490D1" }}> · hold {r.withHoldRate.toFixed(0)}%</span>}
                 </td>
                 <td style={{ padding: "9px 12px", textAlign: "right" }}>
                   <span title={r.hookRatio != null ? `hook ×${r.hookRatio.toFixed(2)} vs остальные` : "мало показов"} style={{

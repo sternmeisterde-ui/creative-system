@@ -23,6 +23,17 @@ const HEALTH = {
 const cplColor = (v: number | null) => v == null ? "#666" : v <= 20 ? "#6EC8A0" : v <= 26 ? "#FF8B5A" : "#D96B6B";
 const eur = (v: number | null | undefined) => v == null ? "—" : `€${v.toFixed(1)}`;
 
+// Светофор-шкала hook rate (3-сек просмотры / показы).
+function hookBand(r: number | null | undefined): { color: string; label: string } {
+  if (r == null) return { color: "#444", label: "—" };
+  if (r >= 45) return { color: "#48B8D0", label: "Elite" };
+  if (r >= 35) return { color: "#6EC8A0", label: "Strong" };
+  if (r >= 25) return { color: "#E8AA42", label: "Solid" };
+  if (r >= 15) return { color: "#FF8B5A", label: "Workable" };
+  return { color: "#D96B6B", label: "Fix-it" };
+}
+const HOOK_BANDS = [["Fix-it", "#D96B6B", "<15%"], ["Workable", "#FF8B5A", "15-25"], ["Solid", "#E8AA42", "25-35"], ["Strong", "#6EC8A0", "35-45"], ["Elite", "#48B8D0", "45+"]] as const;
+
 // Код параметра с тултипом (наведение → тип, название, описание).
 function CodeTag({ code, info, color }: { code: string; info?: ParamInfo; color?: string }) {
   const [hover, setHover] = useState(false);
@@ -79,15 +90,16 @@ function Chip({ s, helps, paramInfo }: { s: ReportSignal; helps: boolean; paramI
   );
 }
 
-function HookChip({ h, good, paramInfo }: { h: ReportHookSignal; good: boolean; paramInfo: Record<string, ParamInfo> }) {
+function HookChip({ h, paramInfo }: { h: ReportHookSignal; paramInfo: Record<string, ParamInfo> }) {
   const c = PARAM_COLOR[h.paramType] ?? "#888";
-  const edge = good ? "#48B8D0" : "#D96B6B";
+  const b = hookBand(h.hookRate);                 // абсолютный уровень (шкала)
   return (
-    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 8, background: `${edge}14`, border: `1px solid ${edge}30` }}>
+    <span style={{ display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 10px", borderRadius: 8, background: `${b.color}14`, border: `1px solid ${b.color}40` }}>
       <CodeTag code={h.code} info={paramInfo[h.code]} color={c} />
-      <span style={{ fontSize: 11, color: "#48B8D0", fontWeight: 700 }}>{h.hookRate != null ? `${h.hookRate.toFixed(1)}%` : "—"}</span>
+      <span style={{ fontSize: 11, color: b.color, fontWeight: 700 }}>{h.hookRate != null ? `${h.hookRate.toFixed(1)}%` : "—"}</span>
+      <span style={{ fontSize: 9, color: b.color, opacity: 0.9 }}>{b.label}</span>
       {h.holdRate != null && <span style={{ fontSize: 10, color: "#C490D1" }}>hold {h.holdRate.toFixed(0)}%</span>}
-      <span style={{ fontSize: 10, color: edge, fontWeight: 700 }}>×{h.ratio?.toFixed(2) ?? "—"}</span>
+      <span style={{ fontSize: 10, color: "#777", fontWeight: 700 }}>×{h.ratio?.toFixed(2) ?? "—"}</span>
     </span>
   );
 }
@@ -284,16 +296,24 @@ export default function ReportPage() {
           {/* Hook rate — что цепляет (видео) */}
           {((visual.hookHelps?.length ?? 0) > 0 || (visual.hookHurts?.length ?? 0) > 0) && (
             <Card>
-              <SectionTitle icon="🎬" color="#48B8D0">Hook rate — что цепляет (видео: плеи/показы)</SectionTitle>
+              <SectionTitle icon="🎬" color="#48B8D0">Hook rate — что цепляет (видео: 3-сек просмотры / показы)</SectionTitle>
+              {/* Легенда-шкала */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 10, marginBottom: 14 }}>
+                {HOOK_BANDS.map(([label, color, range]) => (
+                  <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 10, color: "#999" }}>
+                    <span style={{ width: 9, height: 9, borderRadius: 2, background: color }} /> {label} <span style={{ color: "#555" }}>{range}</span>
+                  </span>
+                ))}
+              </div>
               <div style={{ fontSize: 11, color: "#48B8D0", marginBottom: 8, fontWeight: 700 }}>ЦЕПЛЯЮТ — выше hook rate (×N vs остальные)</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
-                {visual.hookHelps?.length ? visual.hookHelps.map(h => <HookChip key={h.code} h={h} good paramInfo={paramInfo} />) : <span style={{ color: "#555", fontSize: 12 }}>—</span>}
+                {visual.hookHelps?.length ? visual.hookHelps.map(h => <HookChip key={h.code} h={h} paramInfo={paramInfo} />) : <span style={{ color: "#555", fontSize: 12 }}>—</span>}
               </div>
               <div style={{ fontSize: 11, color: "#D96B6B", marginBottom: 8, fontWeight: 700 }}>НЕ ЦЕПЛЯЮТ — ниже hook rate</div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-                {visual.hookHurts?.length ? visual.hookHurts.map(h => <HookChip key={h.code} h={h} good={false} paramInfo={paramInfo} />) : <span style={{ color: "#555", fontSize: 12 }}>—</span>}
+                {visual.hookHurts?.length ? visual.hookHurts.map(h => <HookChip key={h.code} h={h} paramInfo={paramInfo} />) : <span style={{ color: "#555", fontSize: 12 }}>—</span>}
               </div>
-              <p style={{ fontSize: 11, color: "#666", marginTop: 12, lineHeight: 1.5 }}>Hook rate и CPL — <b style={{ color: "#888" }}>разные оси</b>: код может цеплять (высокий hook), но давать дорогой лид — тогда чинить боди/оффер, а не хук. Метрика видео-крео (у статики прочерк).</p>
+              <p style={{ fontSize: 11, color: "#666", marginTop: 12, lineHeight: 1.5 }}>Цвет = абсолютный уровень по шкале, ×N = относительно остальных хуков. Hook rate и CPL — <b style={{ color: "#888" }}>разные оси</b>: код может цеплять, но давать дорогой лид (тогда чинить боди/оффер, не хук). Метрика видео-крео.</p>
             </Card>
           )}
 

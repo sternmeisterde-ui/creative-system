@@ -57,6 +57,16 @@ interface Platform {
 const TARGET_CPL = 20;
 const TARGET_CPQL = 28;
 
+// Светофор-шкала hook rate (3-сек просмотры / показы).
+function hookBand(r: number | null | undefined): { color: string; label: string } {
+  if (r == null) return { color: "#444", label: "—" };
+  if (r >= 45) return { color: "#48B8D0", label: "Elite" };
+  if (r >= 35) return { color: "#6EC8A0", label: "Strong" };
+  if (r >= 25) return { color: "#E8AA42", label: "Solid" };
+  if (r >= 15) return { color: "#FF8B5A", label: "Workable" };
+  return { color: "#D96B6B", label: "Fix-it" };
+}
+
 function fmt(n: number | null | undefined, decimals = 2): string {
   if (n == null) return "—";
   return n.toFixed(decimals);
@@ -714,7 +724,9 @@ export default function PanelPage() {
                     <td style={{ padding: "10px 14px", color: "#AAA" }}>{row.clicks?.toLocaleString() ?? "—"}</td>
                     <td style={{ padding: "10px 14px", color: "#AAA" }}>{fmt(row.ctr)}%</td>
                     <td style={{ padding: "10px 14px", color: "#AAA" }}>€{fmt(row.cpm)}</td>
-                    <td style={{ padding: "10px 14px", color: row.hookRate != null ? "#48B8D0" : "#444", fontWeight: row.hookRate != null ? 700 : 400 }}>{row.hookRate != null ? `${fmt(row.hookRate, 1)}%` : "—"}</td>
+                    <td style={{ padding: "10px 14px", whiteSpace: "nowrap" }}>
+                      {row.hookRate != null ? (() => { const b = hookBand(row.hookRate); return <span title={`${b.label} (шкала 3-сек hook rate)`} style={{ color: b.color, fontWeight: 700 }}>{fmt(row.hookRate, 1)}% <span style={{ fontSize: 9, opacity: 0.85 }}>{b.label}</span></span>; })() : <span style={{ color: "#444" }}>—</span>}
+                    </td>
                     <td style={{ padding: "10px 14px", color: row.holdRate != null ? "#C490D1" : "#444", fontWeight: row.holdRate != null ? 700 : 400 }}>{row.holdRate != null ? `${fmt(row.holdRate, 1)}%` : "—"}</td>
                     <td style={{ padding: "10px 14px", color: "#AAA" }}>{row.leads ?? "—"}</td>
                     <td style={{ padding: "10px 14px" }}><MetricCell value={row.cpl} target={TARGET_CPL} /></td>
