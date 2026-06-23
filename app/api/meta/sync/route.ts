@@ -28,6 +28,14 @@ function actionTypeVal(arr: unknown, type: string): number {
   return hit ? parseInt(String((hit as { value?: string }).value ?? 0)) || 0 : 0;
 }
 
+// KumiSolo 2 — запасной аккаунт со СМЕШАННЫМИ кампаниями (com+gov). Поток определяем
+// по имени кампании: маркер gov → gov, иначе com (имена там gov явно не помечают,
+// поэтому по умолчанию com; для точного split нужен gov-маркер в названии кампании).
+const MIXED_K2 = process.env.META_AD_ACCOUNT_ID_K2;
+function flowFromCampaign(name: string): "com" | "gov" {
+  return /\bgov\b|гос|jobcenter|bildungsgutschein/i.test(name) ? "gov" : "com";
+}
+
 async function fetchAdInsights(accountId: string, dateFrom: string, dateTo: string) {
   const url = new URL(`https://graph.facebook.com/v21.0/${accountId}/insights`);
   url.searchParams.set("access_token", TOKEN);
@@ -62,7 +70,16 @@ export async function POST(req: NextRequest) {
 
   const results: { flow: string; count: number; error?: string }[] = [];
 
-  for (const [flow, accountId] of Object.entries(ACCOUNTS)) {
+  // Список синк-работ: фиксированные аккаунты (один поток) + смешанный KumiSolo 2
+  // (поток определяется по каждой кампании).
+  type Job = { label: string; accountId: string; flowFor: (r: Record<string, unknown>) => string };
+  const jobs: Job[] = Object.entries(ACCOUNTS).map(([flow, accountId]) => ({
+    label: flow, accountId, flowFor: () => flow,
+  }));
+  if (MIXED_K2) jobs.push({ label: "kumisolo2", accountId: MIXED_K2, flowFor: r => flowFromCampaign(String(r.campaign_name ?? "")) });
+
+  for (const { label, accountId, flowFor } of jobs) {
+    const flow = label;
     try {
       const rows = await fetchAdInsights(accountId, dateFrom, dateTo);
 
@@ -73,7 +90,7 @@ export async function POST(req: NextRequest) {
         adset_name:    String(r.adset_name ?? ""),
         campaign_id:   String(r.campaign_id ?? ""),
         campaign_name: String(r.campaign_name ?? ""),
-        flow,
+        flow:          flowFor(r),
         account_id:    accountId,
         date:          String(r.date_start ?? dateTo),
         spend:         parseFloat(String(r.spend ?? 0)),
