@@ -428,15 +428,6 @@ export async function POST(req: NextRequest) {
 
   const supabase = createServiceClient();
 
-  // Полная замена: lifetime-агрегат — это снимок «итог на момент синка», одна строка
-  // на ключ. Чистим строки своего неймспейса (elly:% для Meta, google:% для Google —
-  // не пересекаются) и пишем свежий снимок (дата = dateTo), чтобы во view был ровно
-  // один ряд на ключ и sum(leads) по имени = корректный lifetime.
-  await supabase
-    .from("pbi_metrics")
-    .delete()
-    .like("ad_id", `${prefix}%`);
-
   const payload = rows.map(r => ({
     ad_id:      `${prefix}${r.adId || r.adName.trim()}`,
     ad_name:    r.adName.trim(),
@@ -446,6 +437,25 @@ export async function POST(req: NextRequest) {
     spend:      r.spend,
     revenue:    r.revenue,
   }));
+
+  // ЗАЩИТА ОТ ЗАТИРАНИЯ. Plurio иногда отдаёт ЧАСТИЧНЫЙ ответ (обрезка markdown/TSV,
+  // таймаут поллинга). Раньше синк сразу делал full-replace → частичный результат
+  // затирал полные данные (23 июня: 840 строк → 93, у топ-крео обнулились лиды).
+  // Теперь: если новых строк подозрительно мало относительно уже сохранённых —
+  // НЕ заменяем, данные сохраняем, просим повторить.
+  const { count: existing } = await supabase
+    .from("pbi_metrics").select("*", { count: "exact", head: true }).like("ad_id", `${prefix}%`);
+  if (existing && existing > 50 && payload.length < existing * 0.6) {
+    return NextResponse.json({
+      ok: false, aborted: true, source,
+      reason: `Частичный ответ Plurio: получено ${payload.length} строк, было ${existing}. Полная замена ОТМЕНЕНА — данные сохранены. Повтори синк.`,
+      got: payload.length, had: existing,
+    }, { status: 200 });
+  }
+
+  // Полная замена: lifetime-агрегат — снимок «итог на момент синка», одна строка на ключ.
+  // Чистим строки своего неймспейса (elly:% / google:% — не пересекаются), пишем свежий снимок.
+  await supabase.from("pbi_metrics").delete().like("ad_id", `${prefix}%`);
 
   const { error } = await supabase
     .from("pbi_metrics")
