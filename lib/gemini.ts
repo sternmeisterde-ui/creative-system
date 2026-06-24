@@ -116,3 +116,30 @@ export async function describeCreative(assetUrl: string): Promise<string> {
   if (!text) throw new Error("Gemini не вернул описание");
   return text;
 }
+
+const TRANSCRIPT_PROMPT = `Транскрибируй это рекламное видео ДОСЛОВНО (verbatim), на языке оригинала (русский).
+Выдай в формате:
+1. ХУК (первые 3 секунды) — ровно та фраза/слова, что звучат/показаны в самом начале.
+2. ПОЛНАЯ РАСШИФРОВКА речи с таймкодами [мм:сс] — дословно, без пересказа и сокращений.
+3. ТЕКСТ НА ЭКРАНЕ — все плашки/субтитры/титры дословно (если есть), с таймкодами.
+Не придумывай и не перефразируй. Если речи нет — напиши «речи нет». Без преамбулы.`;
+
+// Дословная транскрибация одного видео-креатива (для ручной разметки хуков).
+export async function transcribeCreative(assetUrl: string): Promise<string> {
+  if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY не задан");
+  const { buffer, mimeType, name } = await fetchBuffer(assetUrl);
+  const fileUri = await uploadToFilesApi(buffer, mimeType, name);
+  const res = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: TRANSCRIPT_PROMPT }, { file_data: { mime_type: mimeType, file_uri: fileUri } }] }],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 8192, thinkingConfig: { thinkingBudget: 0 } },
+    }),
+  });
+  if (!res.ok) throw new Error(`Gemini error: ${await res.text()}`);
+  const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+  const text = data.candidates?.[0]?.content?.parts?.map(p => p.text ?? "").join("") ?? "";
+  if (!text) throw new Error("Gemini не вернул транскрипт");
+  return text;
+}
