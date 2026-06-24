@@ -282,8 +282,15 @@ function parseTsvText(text: string): EllyRow[] {
   return rows;
 }
 
-async function fetchTsv(url: string): Promise<EllyRow[]> {
-  const res = await fetch(url);
+async function fetchTsv(url: string, chatId?: string): Promise<EllyRow[]> {
+  let res = await fetch(url);
+  // Presigned-ссылка Plurio живёт недолго → 403, если успела протухнуть. Если знаем chatId,
+  // перезапрашиваем СВЕЖУЮ ссылку в том же чате и пробуем ещё раз (до 2 попыток).
+  for (let attempt = 0; !res.ok && chatId && attempt < 2; attempt++) {
+    const fresh = await askForTsvUrl(chatId);
+    if (!fresh) break;
+    res = await fetch(fresh);
+  }
   if (!res.ok) throw new Error(`TSV fetch failed: HTTP ${res.status}`);
   const text = await res.text();
   const rows = parseTsvText(text);
@@ -315,14 +322,14 @@ async function pollChatMessages(chatId: string, pollDeadline: number): Promise<E
 
     if (!text || text.includes("No messages found")) continue;
 
-    // Большая выгрузка → ссылка на TSV
+    // Большая выгрузка → ссылка на TSV (chatId → ретрай свежей ссылки при 403)
     const tsvUrl = extractTsvUrl(text);
-    if (tsvUrl) return await fetchTsv(tsvUrl);
+    if (tsvUrl) return await fetchTsv(tsvUrl, chatId);
 
     // TSV упомянут, но URL не виден — попросим явно
     if (hasTsvMention(text)) {
       const url = await askForTsvUrl(chatId);
-      if (url) return await fetchTsv(url);
+      if (url) return await fetchTsv(url, chatId);
     }
 
     const rows = parseResponse(text);
@@ -377,18 +384,17 @@ async function syncElly(dateFrom: string, dateTo: string, source: "meta" | "goog
     return pollChatMessages(chatId, Date.now() + 120_000);
   }
 
-  // Большая выгрузка → ссылка на TSV (Plurio так делает когда строк >~150)
+  // Большая выгрузка → ссылка на TSV (Plurio так делает когда строк >~150).
+  // chatId передаём в fetchTsv — чтобы при 403 (протухшая ссылка) перезапросить свежую.
+  const chatId = extractChatId(text);
   const tsvUrl = extractTsvUrl(text);
-  if (tsvUrl) return await fetchTsv(tsvUrl);
+  if (tsvUrl) return await fetchTsv(tsvUrl, chatId ?? undefined);
 
   // Plurio упомянул TSV-файл, но URL в видимой части ответа нет —
   // делаем follow-up в тот же chat и просим полный URL.
-  if (hasTsvMention(text)) {
-    const chatId = extractChatId(text);
-    if (chatId) {
-      const url = await askForTsvUrl(chatId);
-      if (url) return await fetchTsv(url);
-    }
+  if (hasTsvMention(text) && chatId) {
+    const url = await askForTsvUrl(chatId);
+    if (url) return await fetchTsv(url, chatId);
   }
 
   const rows = parseResponse(text);
