@@ -172,18 +172,45 @@ function CreativeCard({ row, note, onNoteChange, onSave, onGenAI }: {
 }) {
   const st = STATUS[row.status];
   const band = hookBand(row.hookRate);
+  const [playing, setPlaying] = useState(false);
+  const isVideo = !!row.videoId;
+  const frame: React.CSSProperties = { width: 150, height: 188, borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", display: "block", objectFit: "cover" };
   return (
     <Card style={{ marginBottom: 16 }}>
       <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
         {/* Превью */}
         <div style={{ flexShrink: 0, width: 150 }}>
-          {row.assetUrl ? (
+          {isVideo && playing ? (
+            <video
+              src={`/api/meta/video?videoId=${row.videoId}`}
+              poster={row.assetUrl ?? undefined}
+              controls autoPlay
+              onError={() => setPlaying(false)}
+              style={{ ...frame, objectFit: "contain", background: "#000" }}
+            />
+          ) : isVideo ? (
+            <button
+              onClick={() => setPlaying(true)}
+              title="Смотреть видео"
+              style={{ position: "relative", padding: 0, border: "none", background: "none", cursor: "pointer", display: "block" }}
+            >
+              {row.assetUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={row.assetUrl} alt={row.adName} style={frame} />
+              ) : (
+                <div style={{ ...frame, background: "rgba(255,255,255,0.02)" }} />
+              )}
+              <span style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center" }}>
+                <span style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(0,0,0,0.55)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>▶</span>
+              </span>
+            </button>
+          ) : row.assetUrl ? (
             <a href={row.assetUrl} target="_blank" rel="noreferrer">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={row.assetUrl} alt={row.adName} style={{ width: 150, height: 188, objectFit: "cover", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", display: "block" }} />
+              <img src={row.assetUrl} alt={row.adName} style={frame} />
             </a>
           ) : (
-            <div style={{ width: 150, height: 188, borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#444", fontSize: 11, textAlign: "center", padding: 8 }}>
+            <div style={{ ...frame, background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#444", fontSize: 11, textAlign: "center", padding: 8 }}>
               нет ассета{row.objectType ? ` (${row.objectType})` : ""}
             </div>
           )}
@@ -192,7 +219,7 @@ function CreativeCard({ row, note, onNoteChange, onSave, onGenAI }: {
             {row.format && <Badge color="#C490D1">{row.format}</Badge>}
             {row.flow && <Badge color="#48B8D0">{row.flow.toUpperCase()}</Badge>}
           </div>
-          {row.videoId && <div style={{ marginTop: 6, fontSize: 10, color: "#555" }}>🎬 видео</div>}
+          {isVideo && !playing && <div style={{ marginTop: 6, fontSize: 10, color: "#555" }}>🎬 видео — клик для просмотра</div>}
         </div>
 
         {/* Метрики */}
