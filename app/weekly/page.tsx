@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useState } from "react";
-import { Card, PageHeader, Button, Badge } from "@/components/ui";
+import { Card, PageHeader, Button, Badge, SectionTitle, Stat } from "@/components/ui";
 import type { WeeklyCreativeRow, WeeklyReport, WeeklyReportSummary } from "@/app/api/analytics/weekly/route";
 import type { CreativeParams } from "@/lib/gemini";
 
@@ -52,6 +52,8 @@ export default function WeeklyPage() {
   const [params, setParams]       = useState<Record<string, CreativeParams>>({});
   const [paramsBusy, setParamsBusy] = useState<Set<string>>(new Set());
   const [bulkRunning, setBulkRunning] = useState(false);
+  const [summaryNote, setSummaryNote] = useState("");
+  const [summaryBusy, setSummaryBusy] = useState(false);
   const [building, setBuilding]   = useState(false);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState<string | null>(null);
@@ -82,6 +84,7 @@ export default function WeeklyPage() {
       for (const n of (j.notes ?? [])) map[n.ad_id] = { note: n.note ?? "", aiNote: n.ai_note ?? "" };
       setNotes(map);
       setSelectedId(id);
+      setSummaryNote(j.report.summaryNote ?? "");
       loadParams((j.report.rows as WeeklyCreativeRow[]).map(x => x.adName));
     } finally { setLoading(false); }
   }, [loadParams]);
@@ -100,8 +103,30 @@ export default function WeeklyPage() {
       if (j.error) { setError(j.error); return; }
       await loadList();
       setReport(j.report); setNotes({}); setSelectedId(j.report.id);
+      setSummaryNote(j.report.summaryNote ?? "");
       loadParams((j.report.rows as WeeklyCreativeRow[]).map(x => x.adName));
     } finally { setBuilding(false); }
+  }
+
+  async function genSummary() {
+    if (!selectedId) return;
+    setSummaryBusy(true); setError(null);
+    try {
+      const r = await fetch("/api/analytics/weekly/summary", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportId: selectedId, generate: true }),
+      });
+      const j = await r.json();
+      if (j.error) { setError(j.error); return; }
+      setReport(prev => prev ? { ...prev, summary: j.summary } : prev);
+    } finally { setSummaryBusy(false); }
+  }
+  async function saveSummaryNote() {
+    if (!selectedId) return;
+    await fetch("/api/analytics/weekly/summary", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reportId: selectedId, note: summaryNote }),
+    });
   }
 
   async function genParams(adName: string) {
@@ -200,6 +225,17 @@ export default function WeeklyPage() {
       )}
       {!loading && !report && <Card><div style={{ color: "#666", textAlign: "center", padding: 20 }}>Соберите первую неделю ↑</div></Card>}
 
+      {!loading && report && report.rows.length > 0 && (
+        <WeekSummary
+          report={report}
+          note={summaryNote}
+          busy={summaryBusy}
+          onGenerate={genSummary}
+          onNoteChange={setSummaryNote}
+          onNoteSave={saveSummaryNote}
+        />
+      )}
+
       {!loading && report?.rows.map(row => (
         <CreativeCard
           key={row.adId}
@@ -214,6 +250,78 @@ export default function WeeklyPage() {
         />
       ))}
     </div>
+  );
+}
+
+// ── Сводный разбор недели (основа для шторма) ────────────────────────────
+function WeekSummary({ report, note, busy, onGenerate, onNoteChange, onNoteSave }: {
+  report: WeeklyReport; note: string; busy: boolean;
+  onGenerate: () => void; onNoteChange: (t: string) => void; onNoteSave: () => void;
+}) {
+  const rows = report.rows;
+  const sum = (f: (r: WeeklyCreativeRow) => number) => rows.reduce((a, r) => a + f(r), 0);
+  const spend = sum(r => r.spend), leads = sum(r => r.leads), qual = sum(r => r.qualLeads);
+  const cpl = leads ? spend / leads : null, cpql = qual ? spend / qual : null;
+  const counts = rows.reduce((a, r) => { a[r.status] = (a[r.status] ?? 0) + 1; return a; }, {} as Record<string, number>);
+  const withCpl = rows.filter(r => r.cpl != null && r.leads > 0);
+  const top = [...withCpl].sort((a, b) => a.cpl! - b.cpl!).slice(0, 3);
+  const bot = [...withCpl].sort((a, b) => b.cpl! - a.cpl!).slice(0, 3);
+  const miniLine = (r: WeeklyCreativeRow, color: string) => (
+    <div key={r.adId} style={{ fontSize: 12, color: "#BBB", padding: "2px 0" }}>
+      <span style={{ color, fontWeight: 700 }}>€{fmt(r.cpl)}</span> · {r.adName} <span style={{ color: "#666" }}>({r.leads} лид., hook {r.hookRate == null ? "—" : Math.round(r.hookRate) + "%"})</span>
+    </div>
+  );
+
+  return (
+    <Card style={{ marginBottom: 20, border: "1px solid rgba(196,144,209,0.25)" }}>
+      <SectionTitle color="#C490D1">🧠 Разбор недели — {report.label}</SectionTitle>
+
+      {/* Объективный блок (в коде) */}
+      <div style={{ display: "flex", gap: 20, flexWrap: "wrap", margin: "8px 0 16px" }}>
+        <Stat label="Спенд" value={`€${int(Math.round(spend))}`} />
+        <Stat label="Лиды" value={int(leads)} color="#6EC8A0" />
+        <Stat label="Квал" value={int(qual)} color="#6EC8A0" />
+        <Stat label="Blended CPL" value={cpl == null ? "—" : `€${fmt(cpl)}`} color={cpl != null && cpl <= 20 ? "#6EC8A0" : "#D96B6B"} />
+        <Stat label="Blended CPQL" value={cpql == null ? "—" : `€${fmt(cpql)}`} color={cpql != null && cpql <= 28 ? "#6EC8A0" : "#D96B6B"} />
+        <Stat label="Winner / Loser / Test" value={`${counts.winner ?? 0} / ${counts.loser ?? 0} / ${counts.testing ?? 0}`} />
+      </div>
+
+      <div style={{ display: "flex", gap: 24, flexWrap: "wrap", marginBottom: 16 }}>
+        <div style={{ flex: "1 1 320px" }}>
+          <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, color: "#6EC8A0", fontWeight: 700, marginBottom: 4 }}>Лучшие по CPL</div>
+          {top.length ? top.map(r => miniLine(r, "#6EC8A0")) : <div style={{ fontSize: 12, color: "#666" }}>нет лидов</div>}
+        </div>
+        <div style={{ flex: "1 1 320px" }}>
+          <div style={{ fontSize: 10, textTransform: "uppercase", letterSpacing: 0.5, color: "#D96B6B", fontWeight: 700, marginBottom: 4 }}>Худшие по CPL</div>
+          {bot.length ? bot.map(r => miniLine(r, "#D96B6B")) : <div style={{ fontSize: 12, color: "#666" }}>нет лидов</div>}
+        </div>
+      </div>
+
+      {/* AI-разбор паттернов */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+        <span style={{ fontSize: 11, color: "#C490D1", fontWeight: 600 }}>Паттерны и над чем штормить (AI)</span>
+        <Button size="sm" onClick={onGenerate} disabled={busy}>{busy ? "Анализирую…" : report.summary ? "↻ Пересобрать" : "🧠 Сделать разбор недели"}</Button>
+      </div>
+      {report.summary ? (
+        <div style={{ fontSize: 13, color: "#DDD", lineHeight: 1.6, whiteSpace: "pre-wrap", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: 14, marginBottom: 16 }}>
+          {report.summary}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: "#666", marginBottom: 16 }}>
+          {busy ? "Claude собирает картину недели…" : "Сначала «Разобрать параметры» по крео — тогда разбор будет по хукам/энглам/персонам. Затем жми «Сделать разбор недели»."}
+        </div>
+      )}
+
+      {/* Командный шторм уровня недели */}
+      <div style={{ fontSize: 11, color: "#E8AA42", fontWeight: 600, marginBottom: 6 }}>✍️ Шторм команды (уровень недели)</div>
+      <textarea
+        value={note}
+        onChange={e => onNoteChange(e.target.value)}
+        onBlur={onNoteSave}
+        placeholder="Идеи новых крео на следующую пачку — поверх AI-разбора…"
+        style={{ width: "100%", minHeight: 90, background: "rgba(232,170,66,0.05)", border: "1px solid rgba(232,170,66,0.2)", borderRadius: 8, color: "#DDD", fontSize: 13, fontFamily: "inherit", padding: 12, resize: "vertical", lineHeight: 1.5 }}
+      />
+    </Card>
   );
 }
 

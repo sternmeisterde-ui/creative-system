@@ -35,12 +35,14 @@ export interface WeeklyCreativeRow {
 }
 
 export interface WeeklyReport {
-  id:        string;
-  createdAt: string;
-  weekStart: string;
-  weekEnd:   string;
-  label:     string;
-  rows:      WeeklyCreativeRow[];
+  id:          string;
+  createdAt:   string;
+  weekStart:   string;
+  weekEnd:     string;
+  label:       string;
+  rows:        WeeklyCreativeRow[];
+  summary:     string;   // AI-разбор недели (markdown)
+  summaryNote: string;   // командный шторм уровня недели
 }
 
 export interface WeeklyReportSummary {
@@ -75,6 +77,7 @@ export async function GET(req: NextRequest) {
         id: report.id, createdAt: report.created_at,
         weekStart: report.week_start, weekEnd: report.week_end,
         label: report.label, rows: report.rows,
+        summary: report.summary ?? "", summaryNote: report.summary_note ?? "",
       } as WeeklyReport,
       notes: notes ?? [],
     });
@@ -241,7 +244,7 @@ export async function POST(req: NextRequest) {
       { week_start: weekStart, week_end: weekEnd, label, rows, created_at: new Date().toISOString() },
       { onConflict: "week_start,week_end" }
     )
-    .select("id, created_at, week_start, week_end, label, rows")
+    .select("id, created_at, week_start, week_end, label, rows, summary, summary_note")
     .single();
 
   if (saveErr) return NextResponse.json({ error: saveErr.message }, { status: 500 });
@@ -251,6 +254,7 @@ export async function POST(req: NextRequest) {
       id: saved.id, createdAt: saved.created_at,
       weekStart: saved.week_start, weekEnd: saved.week_end,
       label: saved.label, rows: saved.rows,
+      summary: saved.summary ?? "", summaryNote: saved.summary_note ?? "",
     } as WeeklyReport,
     notes: [],
   });
