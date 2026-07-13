@@ -39,7 +39,7 @@ function prevWeek(): { start: string; end: string } {
   return { start: iso(prevMon), end: iso(prevSun) };
 }
 
-interface NoteState { note: string; aiNote: string; }
+interface NoteState { note: string; aiNote: string; todo: string; }
 
 export default function WeeklyPage() {
   const def = prevWeek();
@@ -81,7 +81,7 @@ export default function WeeklyPage() {
       if (j.error) { setError(j.error); return; }
       setReport(j.report);
       const map: Record<string, NoteState> = {};
-      for (const n of (j.notes ?? [])) map[n.ad_id] = { note: n.note ?? "", aiNote: n.ai_note ?? "" };
+      for (const n of (j.notes ?? [])) map[n.ad_id] = { note: n.note ?? "", aiNote: n.ai_note ?? "", todo: n.todo ?? "" };
       setNotes(map);
       setSelectedId(id);
       setSummaryNote(j.report.summaryNote ?? "");
@@ -156,7 +156,7 @@ export default function WeeklyPage() {
   }
 
   function setNote(adId: string, note: string) {
-    setNotes(prev => ({ ...prev, [adId]: { note, aiNote: prev[adId]?.aiNote ?? "" } }));
+    setNotes(prev => ({ ...prev, [adId]: { note, aiNote: prev[adId]?.aiNote ?? "", todo: prev[adId]?.todo ?? "" } }));
   }
   async function saveNote(adId: string) {
     if (!selectedId) return;
@@ -165,16 +165,26 @@ export default function WeeklyPage() {
       body: JSON.stringify({ reportId: selectedId, adId, note: notes[adId]?.note ?? "" }),
     });
   }
+  function setTodo(adId: string, todo: string) {
+    setNotes(prev => ({ ...prev, [adId]: { note: prev[adId]?.note ?? "", aiNote: prev[adId]?.aiNote ?? "", todo } }));
+  }
+  async function saveTodo(adId: string) {
+    if (!selectedId) return;
+    await fetch("/api/analytics/weekly/note", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reportId: selectedId, adId, todo: notes[adId]?.todo ?? "" }),
+    });
+  }
   async function genAI(adId: string) {
     if (!selectedId) return;
-    setNotes(prev => ({ ...prev, [adId]: { note: prev[adId]?.note ?? "", aiNote: "…генерирую" } }));
+    setNotes(prev => ({ ...prev, [adId]: { note: prev[adId]?.note ?? "", aiNote: "…генерирую", todo: prev[adId]?.todo ?? "" } }));
     const r = await fetch("/api/analytics/weekly/note", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reportId: selectedId, adId, generate: true }),
     });
     const j = await r.json();
-    if (j.error) { setError(j.error); setNotes(prev => ({ ...prev, [adId]: { note: prev[adId]?.note ?? "", aiNote: "" } })); return; }
-    setNotes(prev => ({ ...prev, [adId]: { note: j.note ?? prev[adId]?.note ?? "", aiNote: j.aiNote ?? "" } }));
+    if (j.error) { setError(j.error); setNotes(prev => ({ ...prev, [adId]: { note: prev[adId]?.note ?? "", aiNote: "", todo: prev[adId]?.todo ?? "" } })); return; }
+    setNotes(prev => ({ ...prev, [adId]: { note: j.note ?? prev[adId]?.note ?? "", aiNote: j.aiNote ?? "", todo: prev[adId]?.todo ?? "" } }));
   }
 
   return (
@@ -233,6 +243,7 @@ export default function WeeklyPage() {
           onGenerate={genSummary}
           onNoteChange={setSummaryNote}
           onNoteSave={saveSummaryNote}
+          todos={report.rows.map(r => ({ adName: r.adName, todo: notes[r.adId]?.todo ?? "" })).filter(t => t.todo.trim())}
         />
       )}
 
@@ -247,6 +258,9 @@ export default function WeeklyPage() {
           params={params[nk(row.adName)]}
           paramsBusy={paramsBusy.has(nk(row.adName))}
           onGenParams={() => genParams(row.adName)}
+          todo={notes[row.adId]?.todo ?? ""}
+          onTodoChange={t => setTodo(row.adId, t)}
+          onTodoSave={() => saveTodo(row.adId)}
         />
       ))}
     </div>
@@ -254,9 +268,10 @@ export default function WeeklyPage() {
 }
 
 // ── Сводный разбор недели (основа для шторма) ────────────────────────────
-function WeekSummary({ report, note, busy, onGenerate, onNoteChange, onNoteSave }: {
+function WeekSummary({ report, note, busy, onGenerate, onNoteChange, onNoteSave, todos }: {
   report: WeeklyReport; note: string; busy: boolean;
   onGenerate: () => void; onNoteChange: (t: string) => void; onNoteSave: () => void;
+  todos: { adName: string; todo: string }[];
 }) {
   const rows = report.rows;
   const sum = (f: (r: WeeklyCreativeRow) => number) => rows.reduce((a, r) => a + f(r), 0);
@@ -312,6 +327,23 @@ function WeekSummary({ report, note, busy, onGenerate, onNoteChange, onNoteSave 
         </div>
       )}
 
+      {/* Ту-ду недели — собрано из «Что делаем?» по каждому крео */}
+      <div style={{ fontSize: 11, color: "#48B8D0", fontWeight: 600, marginBottom: 8 }}>
+        📋 Ту-ду недели {todos.length > 0 && `— ${todos.length}`} <span style={{ color: "#555", fontWeight: 400 }}>(из «Что делаем?» по крео)</span>
+      </div>
+      {todos.length > 0 ? (
+        <div style={{ display: "flex", flexDirection: "column", gap: 6, marginBottom: 16 }}>
+          {todos.map((t, i) => (
+            <div key={i} style={{ fontSize: 12, color: "#DDD", display: "flex", gap: 8, background: "rgba(72,184,208,0.06)", border: "1px solid rgba(72,184,208,0.18)", borderRadius: 6, padding: "6px 10px" }}>
+              <span style={{ color: "#48B8D0" }}>▸</span>
+              <span><b style={{ color: "#7EC8E0", fontWeight: 600 }}>{t.adName}:</b> {t.todo}</span>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div style={{ fontSize: 12, color: "#666", marginBottom: 16 }}>Заполняй «🎯 Что делаем?» под крео — пункты соберутся сюда.</div>
+      )}
+
       {/* Командный шторм уровня недели */}
       <div style={{ fontSize: 11, color: "#E8AA42", fontWeight: 600, marginBottom: 6 }}>✍️ Шторм команды (уровень недели)</div>
       <textarea
@@ -326,10 +358,11 @@ function WeekSummary({ report, note, busy, onGenerate, onNoteChange, onNoteSave 
 }
 
 // ── Карточка одного крео ────────────────────────────────────────────────
-function CreativeCard({ row, note, onNoteChange, onSave, onGenAI, params, paramsBusy, onGenParams }: {
+function CreativeCard({ row, note, onNoteChange, onSave, onGenAI, params, paramsBusy, onGenParams, todo, onTodoChange, onTodoSave }: {
   row: WeeklyCreativeRow; note: string;
   onNoteChange: (t: string) => void; onSave: () => void; onGenAI: () => void;
   params?: CreativeParams; paramsBusy: boolean; onGenParams: () => void;
+  todo: string; onTodoChange: (t: string) => void; onTodoSave: () => void;
 }) {
   const st = STATUS[row.status];
   const band = hookBand(row.hookRate);
@@ -427,8 +460,13 @@ function CreativeCard({ row, note, onNoteChange, onSave, onGenAI, params, params
             {paramsBusy ? "Разбираю…" : params ? "↻ Пересобрать" : "Разобрать"}
           </Button>
         </div>
-        {params ? (
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 10 }}>
+        {!params && (
+          <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
+            {paramsBusy ? "Gemini разбирает содержание креатива…" : "Система вытащит хук / энгл / персону / боди из содержания — основа для шторма и субъективной оценки."}
+          </div>
+        )}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 10 }}>
+          {params && <>
             <P label="Формат" v={params.format} />
             <P label="Персона" v={params.persona} />
             <P label="Хук" v={params.hook} />
@@ -436,12 +474,19 @@ function CreativeCard({ row, note, onNoteChange, onSave, onGenAI, params, params
             <P label="Боди" v={params.body} />
             <P label="Чем силён" v={params.strength} color="#6EC8A0" />
             <P label="Над чем штормить" v={params.brainstorm} color="#E8AA42" />
+          </>}
+          {/* Что делаем? — коммент команды → ту-ду недели */}
+          <div style={{ background: "rgba(232,170,66,0.05)", border: "1px solid rgba(232,170,66,0.3)", borderRadius: 8, padding: "8px 10px" }}>
+            <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5, color: "#E8AA42", marginBottom: 4, fontWeight: 700 }}>🎯 Что делаем?</div>
+            <textarea
+              value={todo}
+              onChange={e => onTodoChange(e.target.value)}
+              onBlur={onTodoSave}
+              placeholder="Коммент / действие по крео → попадёт в ту-ду недели"
+              style={{ width: "100%", minHeight: 84, background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "#DDD", fontSize: 12, fontFamily: "inherit", padding: 8, resize: "vertical", lineHeight: 1.4, boxSizing: "border-box" }}
+            />
           </div>
-        ) : (
-          <div style={{ fontSize: 12, color: "#666" }}>
-            {paramsBusy ? "Gemini разбирает содержание креатива…" : "Система вытащит хук / энгл / персону / боди из содержания — основа для шторма и субъективной оценки."}
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Лайтбокс — крупный плеер на весь экран */}

@@ -11,19 +11,19 @@ const fmt = (n: number | null | undefined, d = 2) => (n == null ? "—" : n.toFi
 export async function POST(req: NextRequest) {
   const supabase = createServiceClient();
   const body = await req.json().catch(() => ({})) as {
-    reportId?: string; adId?: string; note?: string; generate?: boolean;
+    reportId?: string; adId?: string; note?: string; todo?: string; generate?: boolean;
   };
   const { reportId, adId } = body;
   if (!reportId || !adId) {
     return NextResponse.json({ error: "reportId и adId обязательны" }, { status: 400 });
   }
 
-  // ── ручное сохранение ──
+  // ── ручное сохранение (note и/или todo — незаданные поля не трогаем) ──
   if (!body.generate) {
-    const { error } = await supabase.from("weekly_creative_notes").upsert(
-      { report_id: reportId, ad_id: adId, note: body.note ?? "", updated_at: new Date().toISOString() },
-      { onConflict: "report_id,ad_id" }
-    );
+    const payload: Record<string, unknown> = { report_id: reportId, ad_id: adId, updated_at: new Date().toISOString() };
+    if (body.note !== undefined) payload.note = body.note;
+    if (body.todo !== undefined) payload.todo = body.todo;
+    const { error } = await supabase.from("weekly_creative_notes").upsert(payload, { onConflict: "report_id,ad_id" });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     return NextResponse.json({ ok: true });
   }

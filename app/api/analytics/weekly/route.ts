@@ -70,7 +70,7 @@ export async function GET(req: NextRequest) {
     if (!report) return NextResponse.json({ error: "not found" }, { status: 404 });
 
     const { data: notes } = await supabase
-      .from("weekly_creative_notes").select("ad_id, note, ai_note").eq("report_id", id);
+      .from("weekly_creative_notes").select("ad_id, note, ai_note, todo").eq("report_id", id);
 
     return NextResponse.json({
       report: {
