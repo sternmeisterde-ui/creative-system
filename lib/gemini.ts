@@ -117,6 +117,69 @@ export async function describeCreative(assetUrl: string): Promise<string> {
   return text;
 }
 
+// Структурный разбор по параметрам (для «полной картины» и шторма на /weekly).
+export interface CreativeParams {
+  format:     string;  // тип креатива
+  persona:    string;  // на кого нацелен / кто в кадре
+  hook:       string;  // суть хука (первые 3 сек / первый экран)
+  angle:      string;  // угол/позиционирование
+  body:       string;  // основная структура/содержание
+  strength:   string;  // чем силён (что копировать при размножении)
+  brainstorm: string;  // над чем штормить по этому крео
+}
+
+const PARAMS_PROMPT = `Контекст: рекламный креатив.\n\n${getAiContext()}
+
+Разбери ЭТОТ креатив по параметрам — для аналитики и мозгового штурма. Только факты о содержании, без метрик и оценок 1-10. На русском, каждое поле кратко и конкретно (1-2 предложения):
+- format: тип (UGC / интервью / talking-head / студия / анимация / квиз-карточка / статика / скринкаст)
+- persona: на кого нацелен и/или кто в кадре (пол, возраст, роль)
+- hook: суть хука — что показано и сказано в первые 3 сек (первый экран), по возможности дословно
+- angle: угол/позиционирование (боль, выгода, соц.доказательство, страх, любопытство, авторитет и т.п.)
+- body: основная структура/содержание — что и в каком порядке
+- strength: чем этот креатив силён (что стоит копировать при размножении)
+- brainstorm: над чем штормить по этому крео — какие варианты хука/энгла/персоны/боди протестировать дальше`;
+
+const PARAMS_SCHEMA = {
+  type: "object",
+  properties: {
+    format:     { type: "string" },
+    persona:    { type: "string" },
+    hook:       { type: "string" },
+    angle:      { type: "string" },
+    body:       { type: "string" },
+    strength:   { type: "string" },
+    brainstorm: { type: "string" },
+  },
+  required: ["format", "persona", "hook", "angle", "body", "strength", "brainstorm"],
+} as const;
+
+// Разбор одного креатива Gemini → структурные параметры (JSON по схеме).
+export async function analyzeCreativeParams(assetUrl: string): Promise<CreativeParams> {
+  if (!GEMINI_API_KEY) throw new Error("GEMINI_API_KEY не задан");
+  const { buffer, mimeType, name } = await fetchBuffer(assetUrl);
+  const fileUri = await uploadToFilesApi(buffer, mimeType, name);
+  const res = await fetch(`${GEMINI_URL}?key=${GEMINI_API_KEY}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: PARAMS_PROMPT }, { file_data: { mime_type: mimeType, file_uri: fileUri } }] }],
+      generationConfig: {
+        temperature: 0.3, maxOutputTokens: 4096, thinkingConfig: { thinkingBudget: 0 },
+        responseMimeType: "application/json", responseSchema: PARAMS_SCHEMA,
+      },
+    }),
+  });
+  if (!res.ok) throw new Error(`Gemini error: ${await res.text()}`);
+  const data = await res.json() as { candidates?: { content?: { parts?: { text?: string }[] } }[] };
+  const text = data.candidates?.[0]?.content?.parts?.map(p => p.text ?? "").join("") ?? "";
+  if (!text) throw new Error("Gemini не вернул параметры");
+  try {
+    return JSON.parse(text) as CreativeParams;
+  } catch {
+    throw new Error("Gemini вернул невалидный JSON параметров");
+  }
+}
+
 const TRANSCRIPT_PROMPT = `Транскрибируй это рекламное видео ДОСЛОВНО (verbatim), на языке оригинала (русский).
 Выдай в формате:
 1. ХУК (первые 3 секунды) — ровно та фраза/слова, что звучат/показаны в самом начале.

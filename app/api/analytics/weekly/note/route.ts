@@ -37,11 +37,20 @@ export async function POST(req: NextRequest) {
   const row = (report?.rows as WeeklyCreativeRow[] | undefined)?.find(r => r.adId === adId);
   if (!row) return NextResponse.json({ error: "крео не найдено в снапшоте" }, { status: 404 });
 
-  // описание содержания крео из Gemini-разбора (если есть)
-  const { data: descRows } = await supabase
-    .from("gemini_analyses").select("ad_name, analysis")
-    .eq("mode", "creative_desc").not("ad_name", "is", null);
-  const desc = (descRows ?? []).find(d => key(d.ad_name as string) === key(row.adName))?.analysis ?? "";
+  // содержание/параметры крео из Gemini-разбора (если есть)
+  const { data: gRows } = await supabase
+    .from("gemini_analyses").select("ad_name, analysis, mode")
+    .in("mode", ["creative_desc", "creative_params"]).not("ad_name", "is", null);
+  const forThis = (gRows ?? []).filter(d => key(d.ad_name as string) === key(row.adName));
+  const desc = forThis.find(d => d.mode === "creative_desc")?.analysis ?? "";
+  const paramsRaw = forThis.find(d => d.mode === "creative_params")?.analysis ?? "";
+  let paramsLine = "";
+  if (paramsRaw) {
+    try {
+      const p = JSON.parse(paramsRaw) as Record<string, string>;
+      paramsLine = `Параметры (авторазбор): персона — ${p.persona}; хук — ${p.hook}; энгл — ${p.angle}; боди — ${p.body}; чем силён — ${p.strength}.`;
+    } catch { /* битый JSON — пропускаем */ }
+  }
 
   const metrics = [
     `Spend €${fmt(row.spend)}`, `Impressions ${row.impressions}`, `CPM €${fmt(row.cpm)}`,
@@ -54,6 +63,7 @@ export async function POST(req: NextRequest) {
 
 Креатив: ${row.adName} (формат ${row.format ?? "?"}, поток ${row.flow ?? "?"}).
 Метрики: ${metrics}.
+${paramsLine}
 ${desc ? `Содержание крео (авторазбор): ${desc}` : ""}`;
 
   let aiNote = "";

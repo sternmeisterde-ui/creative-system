@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Card, PageHeader, Button, Badge } from "@/components/ui";
 import type { WeeklyCreativeRow, WeeklyReport, WeeklyReportSummary } from "@/app/api/analytics/weekly/route";
+import type { CreativeParams } from "@/lib/gemini";
 
 // ── Каноничная шкала hook rate (как на /panel) ──
 const HOOK_BANDS = [
@@ -25,6 +26,7 @@ const STATUS: Record<WeeklyCreativeRow["status"], { color: string; label: string
 const fmt = (n: number | null | undefined, d = 2) =>
   n == null ? "—" : n.toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
 const int = (n: number | null | undefined) => (n == null ? "—" : n.toLocaleString("de-DE"));
+const nk = (s: string) => (s ?? "").trim().toLowerCase();
 
 // Понедельник–воскресенье прошлой недели
 function prevWeek(): { start: string; end: string } {
@@ -47,6 +49,9 @@ export default function WeeklyPage() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [report, setReport]       = useState<WeeklyReport | null>(null);
   const [notes, setNotes]         = useState<Record<string, NoteState>>({});
+  const [params, setParams]       = useState<Record<string, CreativeParams>>({});
+  const [paramsBusy, setParamsBusy] = useState<Set<string>>(new Set());
+  const [bulkRunning, setBulkRunning] = useState(false);
   const [building, setBuilding]   = useState(false);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState<string | null>(null);
@@ -56,6 +61,14 @@ export default function WeeklyPage() {
     const j = await r.json();
     if (j.reports) setReports(j.reports);
     return j.reports as WeeklyReportSummary[] | undefined;
+  }, []);
+
+  const loadParams = useCallback(async (names: string[]) => {
+    if (!names.length) { setParams({}); return; }
+    const q = encodeURIComponent(names.join("|"));
+    const r = await fetch(`/api/gemini/params?adNames=${q}`);
+    const j = await r.json();
+    setParams(j.params ?? {});
   }, []);
 
   const loadReport = useCallback(async (id: string) => {
@@ -69,8 +82,9 @@ export default function WeeklyPage() {
       for (const n of (j.notes ?? [])) map[n.ad_id] = { note: n.note ?? "", aiNote: n.ai_note ?? "" };
       setNotes(map);
       setSelectedId(id);
+      loadParams((j.report.rows as WeeklyCreativeRow[]).map(x => x.adName));
     } finally { setLoading(false); }
-  }, []);
+  }, [loadParams]);
 
   useEffect(() => { loadList().then(list => { if (list?.length) loadReport(list[0].id); }); }, [loadList, loadReport]);
 
@@ -86,7 +100,34 @@ export default function WeeklyPage() {
       if (j.error) { setError(j.error); return; }
       await loadList();
       setReport(j.report); setNotes({}); setSelectedId(j.report.id);
+      loadParams((j.report.rows as WeeklyCreativeRow[]).map(x => x.adName));
     } finally { setBuilding(false); }
+  }
+
+  async function genParams(adName: string) {
+    setParamsBusy(prev => new Set(prev).add(nk(adName)));
+    try {
+      const r = await fetch("/api/gemini/params", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ adName }),
+      });
+      const j = await r.json();
+      if (j.params) setParams(prev => ({ ...prev, [nk(adName)]: j.params }));
+      else if (j.error) setError(`${adName}: ${j.error}`);
+    } finally {
+      setParamsBusy(prev => { const s = new Set(prev); s.delete(nk(adName)); return s; });
+    }
+  }
+
+  async function genAllParams() {
+    if (!report) return;
+    setBulkRunning(true); setError(null);
+    try {
+      for (const row of report.rows) {
+        if (params[nk(row.adName)]) continue;
+        await genParams(row.adName);   // последовательно — видео тяжёлые
+      }
+    } finally { setBulkRunning(false); }
   }
 
   function setNote(adId: string, note: string) {
@@ -131,6 +172,14 @@ export default function WeeklyPage() {
               </select>
             </Field>
           )}
+          {report && (() => {
+            const missing = report.rows.filter(r => !params[nk(r.adName)]).length;
+            return (
+              <Button onClick={genAllParams} disabled={bulkRunning || missing === 0}>
+                {bulkRunning ? `Разбираю… (${paramsBusy.size})` : missing === 0 ? "🧩 Параметры разобраны" : `🧩 Разобрать параметры (${missing})`}
+              </Button>
+            );
+          })()}
         </div>
         {error && <div style={{ color: "#D96B6B", fontSize: 12, marginTop: 12 }}>⚠️ {error}</div>}
       </Card>
@@ -159,6 +208,9 @@ export default function WeeklyPage() {
           onNoteChange={t => setNote(row.adId, t)}
           onSave={() => saveNote(row.adId)}
           onGenAI={() => genAI(row.adId)}
+          params={params[nk(row.adName)]}
+          paramsBusy={paramsBusy.has(nk(row.adName))}
+          onGenParams={() => genParams(row.adName)}
         />
       ))}
     </div>
@@ -166,9 +218,10 @@ export default function WeeklyPage() {
 }
 
 // ── Карточка одного крео ────────────────────────────────────────────────
-function CreativeCard({ row, note, onNoteChange, onSave, onGenAI }: {
+function CreativeCard({ row, note, onNoteChange, onSave, onGenAI, params, paramsBusy, onGenParams }: {
   row: WeeklyCreativeRow; note: string;
   onNoteChange: (t: string) => void; onSave: () => void; onGenAI: () => void;
+  params?: CreativeParams; paramsBusy: boolean; onGenParams: () => void;
 }) {
   const st = STATUS[row.status];
   const band = hookBand(row.hookRate);
@@ -258,6 +311,31 @@ function CreativeCard({ row, note, onNoteChange, onSave, onGenAI }: {
         </div>
       </div>
 
+      {/* Разбор параметров (объективно, AI) — основа для шторма */}
+      <div style={{ marginTop: 16, borderTop: "1px solid rgba(255,255,255,0.06)", paddingTop: 14 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+          <span style={{ fontSize: 11, color: "#C490D1", fontWeight: 600, letterSpacing: 0.3 }}>🧩 Разбор параметров</span>
+          <Button size="sm" variant={params ? "ghost" : "secondary"} onClick={onGenParams} disabled={paramsBusy}>
+            {paramsBusy ? "Разбираю…" : params ? "↻ Пересобрать" : "Разобрать"}
+          </Button>
+        </div>
+        {params ? (
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(230px, 1fr))", gap: 10 }}>
+            <P label="Формат" v={params.format} />
+            <P label="Персона" v={params.persona} />
+            <P label="Хук" v={params.hook} />
+            <P label="Энгл" v={params.angle} />
+            <P label="Боди" v={params.body} />
+            <P label="Чем силён" v={params.strength} color="#6EC8A0" />
+            <P label="Над чем штормить" v={params.brainstorm} color="#E8AA42" />
+          </div>
+        ) : (
+          <div style={{ fontSize: 12, color: "#666" }}>
+            {paramsBusy ? "Gemini разбирает содержание креатива…" : "Система вытащит хук / энгл / персону / боди из содержания — основа для шторма и субъективной оценки."}
+          </div>
+        )}
+      </div>
+
       {/* Лайтбокс — крупный плеер на весь экран */}
       {open && isVideo && (
         <div
@@ -280,6 +358,15 @@ function CreativeCard({ row, note, onNoteChange, onSave, onGenAI }: {
         </div>
       )}
     </Card>
+  );
+}
+
+function P({ label, v, color }: { label: string; v: string; color?: string }) {
+  return (
+    <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 8, padding: "8px 10px" }}>
+      <div style={{ fontSize: 9, textTransform: "uppercase", letterSpacing: 0.5, color: color ?? "#888", marginBottom: 3, fontWeight: 700 }}>{label}</div>
+      <div style={{ fontSize: 12, color: "#DDD", lineHeight: 1.45 }}>{v}</div>
+    </div>
   );
 }
 
