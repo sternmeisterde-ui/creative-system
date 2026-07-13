@@ -9,7 +9,12 @@ import { getMetaAccountsMap } from "@/lib/brief";
 export const maxDuration = 300;
 
 const TOKEN = process.env.META_ACCESS_TOKEN!;
-const ACCOUNTS = getMetaAccountsMap();
+// com + gov + смешанный KumiSolo2 (как в meta/sync) — иначе ассеты K-объявлений
+// (свежий COM-поток в KumiSolo2) не подтягиваются и превью пустые.
+const ACCOUNTS: Record<string, string> = {
+  ...getMetaAccountsMap(),
+  ...(process.env.META_AD_ACCOUNT_ID_K2 ? { kumisolo2: process.env.META_AD_ACCOUNT_ID_K2 } : {}),
+};
 
 interface MetaAd {
   id: string;

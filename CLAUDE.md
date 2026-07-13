@@ -38,6 +38,7 @@ Creative System — внутренний инструмент производс
 | `/briefs` | Брифы — генерация через Claude, аппрув, публикация |
 | `/creatives` | Готовые крео — статус генерации Higgsfield, управление |
 | `/panel` | Live-панель Meta Ads — CPL/CPQL, алерты, статус пакета |
+| `/weekly` | **Субъективный анализ крео** — понедельные снапшоты по всем крео + человеческая/AI-оценка |
 | `/analytics` | Аналитика — параметры, комбинации, история, **бивариативный анализ** |
 | `/mapping` | Маппинг объявлений — ручная привязка имён к кодам параметров |
 | `/competitors` | База конкурентов — импорт из Sheets, AI-инсайты |
@@ -100,6 +101,8 @@ Creative System — внутренний инструмент производс
 | `competitor_concepts` | Концепты конкурентов — source, rawData, status |
 | `creative_alerts` | Алерты — alertType, dismissed |
 | `creative_generations` | Записи генераций Higgsfield |
+| `weekly_creative_reports` | Понедельные снапшоты субъективного анализа — week_start/end, rows[] (замороженные метрики per-крео) |
+| `weekly_creative_notes` | Субъективная оценка per-крео в снапшоте — note (человек) + ai_note (Gemini), грань (report_id, ad_id) |
 
 ### Ключевые views
 - `creative_performance` — объединяет `meta_ads` + `pbi_metrics`, вычисляет CPL, CPQL, `auto_status` (winner/loser/testing/unknown)
@@ -141,11 +144,14 @@ Creative System — внутренний инструмент производс
 | `GET /api/analytics/bivariate` | **Бивариативный анализ** (split + семьи) |
 | `GET /api/analytics/pack-health` | Здоровье пакета (доля виннеров) |
 | `POST /api/analytics/early-stop` | Рекомендации по остановке |
+| `GET/POST /api/analytics/weekly` | Понедельный снапшот: POST берёт spend/показы/клики/hook из meta_ads за окно, **лиды/квал — из Plurio за то же окно** (`syncElly(weekStart,weekEnd)`, т.к. дневной истории лидов в БД нет), join meta_creatives (фильтр по ad_id/имени — не вся таблица), GET листает/отдаёт. `maxDuration=300` |
+| `POST /api/analytics/weekly/note` | Сохранение субъективной заметки / генерация AI-разбора (Gemini flash) |
 
 ### Meta / Данные
 | Роут | Назначение |
 |------|-----------|
 | `POST /api/meta/sync` | Синхронизация данных из Meta API |
+| `POST /api/meta/creatives` | Ингест ассетов крео (thumbnail/image/video_id) для превью и Gemini — обходит com+gov+**KumiSolo2** (`META_AD_ACCOUNT_ID_K2`), с пагинацией |
 | `POST /api/meta/pause` | Остановка объявлений через API |
 | `POST /api/pbi/upload` | Загрузка данных PBI |
 | `POST /api/pbi/elly-sync` | Синхронизация с Elly (Plurio) по SSE |

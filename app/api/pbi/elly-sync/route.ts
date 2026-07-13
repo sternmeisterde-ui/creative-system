@@ -109,7 +109,7 @@ async function collectToolResult(sse: SseReader, timeoutMs: number): Promise<str
 
 // ── Parse Plurio table response ───────────────────────────────────────────────
 
-interface EllyRow {
+export interface EllyRow {
   date: string;          // конкретный день YYYY-MM-DD (дневная разбивка), "" если Plurio не отдал
   adId: string;
   adName: string;
@@ -341,7 +341,7 @@ async function pollChatMessages(chatId: string, pollDeadline: number): Promise<E
 
 // ── Main sync ─────────────────────────────────────────────────────────────────
 
-async function syncElly(dateFrom: string, dateTo: string, source: "meta" | "google" = "meta"): Promise<EllyRow[]> {
+export async function syncElly(dateFrom: string, dateTo: string, source: "meta" | "google" = "meta"): Promise<EllyRow[]> {
   if (!PLURIO_KEY) throw new Error("PLURIO_API_KEY не задан");
 
   const { sse, sessionUrl } = await mcpConnect();

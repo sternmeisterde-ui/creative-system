@@ -1,0 +1,258 @@
+"use client";
+import { useCallback, useEffect, useState } from "react";
+import { Card, PageHeader, Button, Badge } from "@/components/ui";
+import type { WeeklyCreativeRow, WeeklyReport, WeeklyReportSummary } from "@/app/api/analytics/weekly/route";
+
+// ── Каноничная шкала hook rate (как на /panel) ──
+const HOOK_BANDS = [
+  { min: 45, color: "#48B8D0", label: "Elite" },
+  { min: 35, color: "#6EC8A0", label: "Strong" },
+  { min: 25, color: "#E8AA42", label: "Solid" },
+  { min: 15, color: "#FF8B5A", label: "Workable" },
+  { min: 0,  color: "#D96B6B", label: "Fix-it" },
+];
+function hookBand(r: number | null | undefined) {
+  if (r == null) return { color: "#444", label: "—" };
+  return HOOK_BANDS.find(b => r >= b.min) ?? HOOK_BANDS[HOOK_BANDS.length - 1];
+}
+
+const STATUS: Record<WeeklyCreativeRow["status"], { color: string; label: string }> = {
+  winner:  { color: "#6EC8A0", label: "Winner" },
+  loser:   { color: "#D96B6B", label: "Loser" },
+  testing: { color: "#E8AA42", label: "Testing" },
+};
+
+const fmt = (n: number | null | undefined, d = 2) =>
+  n == null ? "—" : n.toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d });
+const int = (n: number | null | undefined) => (n == null ? "—" : n.toLocaleString("de-DE"));
+
+// Понедельник–воскресенье прошлой недели
+function prevWeek(): { start: string; end: string } {
+  const now = new Date();
+  const diffToMon = (now.getDay() + 6) % 7;
+  const thisMon = new Date(now); thisMon.setDate(now.getDate() - diffToMon);
+  const prevMon = new Date(thisMon); prevMon.setDate(thisMon.getDate() - 7);
+  const prevSun = new Date(prevMon); prevSun.setDate(prevMon.getDate() + 6);
+  const iso = (d: Date) => d.toISOString().slice(0, 10);
+  return { start: iso(prevMon), end: iso(prevSun) };
+}
+
+interface NoteState { note: string; aiNote: string; }
+
+export default function WeeklyPage() {
+  const def = prevWeek();
+  const [weekStart, setWeekStart] = useState(def.start);
+  const [weekEnd, setWeekEnd]     = useState(def.end);
+  const [reports, setReports]     = useState<WeeklyReportSummary[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [report, setReport]       = useState<WeeklyReport | null>(null);
+  const [notes, setNotes]         = useState<Record<string, NoteState>>({});
+  const [building, setBuilding]   = useState(false);
+  const [loading, setLoading]     = useState(false);
+  const [error, setError]         = useState<string | null>(null);
+
+  const loadList = useCallback(async () => {
+    const r = await fetch("/api/analytics/weekly");
+    const j = await r.json();
+    if (j.reports) setReports(j.reports);
+    return j.reports as WeeklyReportSummary[] | undefined;
+  }, []);
+
+  const loadReport = useCallback(async (id: string) => {
+    setLoading(true); setError(null);
+    try {
+      const r = await fetch(`/api/analytics/weekly?id=${id}`);
+      const j = await r.json();
+      if (j.error) { setError(j.error); return; }
+      setReport(j.report);
+      const map: Record<string, NoteState> = {};
+      for (const n of (j.notes ?? [])) map[n.ad_id] = { note: n.note ?? "", aiNote: n.ai_note ?? "" };
+      setNotes(map);
+      setSelectedId(id);
+    } finally { setLoading(false); }
+  }, []);
+
+  useEffect(() => { loadList().then(list => { if (list?.length) loadReport(list[0].id); }); }, [loadList, loadReport]);
+
+  async function build() {
+    setBuilding(true); setError(null);
+    try {
+      const r = await fetch("/api/analytics/weekly", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ weekStart, weekEnd }),
+      });
+      const j = await r.json();
+      if (j.error) { setError(j.error); return; }
+      await loadList();
+      setReport(j.report); setNotes({}); setSelectedId(j.report.id);
+    } finally { setBuilding(false); }
+  }
+
+  function setNote(adId: string, note: string) {
+    setNotes(prev => ({ ...prev, [adId]: { note, aiNote: prev[adId]?.aiNote ?? "" } }));
+  }
+  async function saveNote(adId: string) {
+    if (!selectedId) return;
+    await fetch("/api/analytics/weekly/note", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reportId: selectedId, adId, note: notes[adId]?.note ?? "" }),
+    });
+  }
+  async function genAI(adId: string) {
+    if (!selectedId) return;
+    setNotes(prev => ({ ...prev, [adId]: { note: prev[adId]?.note ?? "", aiNote: "…генерирую" } }));
+    const r = await fetch("/api/analytics/weekly/note", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reportId: selectedId, adId, generate: true }),
+    });
+    const j = await r.json();
+    if (j.error) { setError(j.error); setNotes(prev => ({ ...prev, [adId]: { note: prev[adId]?.note ?? "", aiNote: "" } })); return; }
+    setNotes(prev => ({ ...prev, [adId]: { note: j.note ?? prev[adId]?.note ?? "", aiNote: j.aiNote ?? "" } }));
+  }
+
+  return (
+    <div style={{ padding: 32, maxWidth: 1100, margin: "0 auto" }}>
+      <PageHeader
+        title="Субъективный анализ крео"
+        subtitle="Понедельный срез по всем крео + человеческая/AI оценка"
+      />
+
+      {/* Контролы сборки */}
+      <Card style={{ marginBottom: 20 }}>
+        <div style={{ display: "flex", gap: 16, alignItems: "flex-end", flexWrap: "wrap" }}>
+          <Field label="Начало недели (пн)"><input type="date" value={weekStart} onChange={e => setWeekStart(e.target.value)} style={inputStyle} /></Field>
+          <Field label="Конец недели (вс)"><input type="date" value={weekEnd} onChange={e => setWeekEnd(e.target.value)} style={inputStyle} /></Field>
+          <Button variant="primary" onClick={build} disabled={building}>{building ? "Собираю…" : "📥 Собрать неделю"}</Button>
+          {reports.length > 0 && (
+            <Field label="История">
+              <select value={selectedId ?? ""} onChange={e => loadReport(e.target.value)} style={inputStyle}>
+                {reports.map(r => <option key={r.id} value={r.id}>{r.label} · {r.adCount} крео</option>)}
+              </select>
+            </Field>
+          )}
+        </div>
+        {error && <div style={{ color: "#D96B6B", fontSize: 12, marginTop: 12 }}>⚠️ {error}</div>}
+      </Card>
+
+      {/* Легенда hook rate */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
+        <span style={{ fontSize: 11, color: "#666" }}>Hook rate (3-сек / показы):</span>
+        {[...HOOK_BANDS].reverse().map(b => (
+          <span key={b.label} style={{ fontSize: 11, color: b.color, border: `1px solid ${b.color}55`, borderRadius: 6, padding: "2px 8px" }}>
+            {b.label} {b.min === 0 ? "<15%" : b.min === 45 ? "≥45%" : `${b.min}–${(HOOK_BANDS[HOOK_BANDS.indexOf(b) - 1]?.min ?? b.min)}%`}
+          </span>
+        ))}
+      </div>
+
+      {loading && <div style={{ color: "#666" }}>Загрузка…</div>}
+      {!loading && report && report.rows.length === 0 && (
+        <Card><div style={{ color: "#666", textAlign: "center", padding: 20 }}>Нет крео за это окно</div></Card>
+      )}
+      {!loading && !report && <Card><div style={{ color: "#666", textAlign: "center", padding: 20 }}>Соберите первую неделю ↑</div></Card>}
+
+      {!loading && report?.rows.map(row => (
+        <CreativeCard
+          key={row.adId}
+          row={row}
+          note={notes[row.adId]?.note ?? ""}
+          onNoteChange={t => setNote(row.adId, t)}
+          onSave={() => saveNote(row.adId)}
+          onGenAI={() => genAI(row.adId)}
+        />
+      ))}
+    </div>
+  );
+}
+
+// ── Карточка одного крео ────────────────────────────────────────────────
+function CreativeCard({ row, note, onNoteChange, onSave, onGenAI }: {
+  row: WeeklyCreativeRow; note: string;
+  onNoteChange: (t: string) => void; onSave: () => void; onGenAI: () => void;
+}) {
+  const st = STATUS[row.status];
+  const band = hookBand(row.hookRate);
+  return (
+    <Card style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", gap: 20, alignItems: "flex-start", flexWrap: "wrap" }}>
+        {/* Превью */}
+        <div style={{ flexShrink: 0, width: 150 }}>
+          {row.assetUrl ? (
+            <a href={row.assetUrl} target="_blank" rel="noreferrer">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={row.assetUrl} alt={row.adName} style={{ width: 150, height: 188, objectFit: "cover", borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", display: "block" }} />
+            </a>
+          ) : (
+            <div style={{ width: 150, height: 188, borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#444", fontSize: 11, textAlign: "center", padding: 8 }}>
+              нет ассета{row.objectType ? ` (${row.objectType})` : ""}
+            </div>
+          )}
+          <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <Badge color={st.color}>{st.label}</Badge>
+            {row.format && <Badge color="#C490D1">{row.format}</Badge>}
+            {row.flow && <Badge color="#48B8D0">{row.flow.toUpperCase()}</Badge>}
+          </div>
+          {row.videoId && <div style={{ marginTop: 6, fontSize: 10, color: "#555" }}>🎬 видео</div>}
+        </div>
+
+        {/* Метрики */}
+        <div style={{ flex: "1 1 260px", minWidth: 260 }}>
+          <div style={{ fontWeight: 700, fontSize: 14, marginBottom: 10 }}>{row.adName}</div>
+          <div style={{ display: "grid", gridTemplateColumns: "auto auto", gap: "2px 0" }}>
+            <M l="Spend" v={`€${fmt(row.spend)}`} />
+            <M l="Impressions" v={int(row.impressions)} />
+            <M l="CPM" v={`€${fmt(row.cpm)}`} />
+            <M l="Clicks" v={int(row.clicks)} />
+            <M l="CPC" v={`€${fmt(row.cpc)}`} />
+            <M l="CTR" v={`${fmt(row.ctr)}%`} />
+            <M l="CR Click/Lead" v={`${fmt(row.crClickLead)}%`} />
+            <M l="Leads" v={int(row.leads)} />
+            <M l="CPL" v={`€${fmt(row.cpl)}`} highlight={row.cpl != null && row.cpl <= 20 ? "#6EC8A0" : row.cpl != null ? "#D96B6B" : undefined} />
+            <M l="Qual Leads" v={int(row.qualLeads)} />
+            <M l="CPQL" v={`€${fmt(row.cpql)}`} highlight={row.cpql != null && row.cpql <= 28 ? "#6EC8A0" : row.cpql != null ? "#D96B6B" : undefined} />
+            <M l="Hook Rate" v={row.hookRate == null ? "—" : `${fmt(row.hookRate, 1)}% ${band.label}`} highlight={band.color} />
+            <M l="Hold Rate" v={row.holdRate == null ? "—" : `${fmt(row.holdRate, 1)}%`} />
+          </div>
+        </div>
+
+        {/* Зелёная зона — субъективная оценка */}
+        <div style={{ flex: "1 1 300px", minWidth: 280, background: "rgba(110,200,160,0.06)", border: "1px solid rgba(110,200,160,0.2)", borderRadius: 8, padding: 12 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ fontSize: 11, color: "#6EC8A0", fontWeight: 600 }}>Субъективный разбор</span>
+            <Button size="sm" onClick={onGenAI}>✨ AI-разбор</Button>
+          </div>
+          <textarea
+            value={note}
+            onChange={e => onNoteChange(e.target.value)}
+            onBlur={onSave}
+            placeholder="Что сработало / не сработало, гипотеза, что попробовать…"
+            style={{ width: "100%", minHeight: 150, background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 6, color: "#DDD", fontSize: 12, fontFamily: "inherit", padding: 10, resize: "vertical", lineHeight: 1.5 }}
+          />
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function M({ l, v, highlight }: { l: string; v: string; highlight?: string }) {
+  return (
+    <>
+      <div style={{ fontSize: 12, color: "#888", padding: "4px 12px 4px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>{l}</div>
+      <div style={{ fontSize: 12, color: highlight ?? "#DDD", fontWeight: highlight ? 700 : 500, textAlign: "right", padding: "4px 0", borderBottom: "1px solid rgba(255,255,255,0.04)" }}>{v}</div>
+    </>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <label style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+      <span style={{ fontSize: 10, color: "#666", textTransform: "uppercase", letterSpacing: 0.5 }}>{label}</span>
+      {children}
+    </label>
+  );
+}
+
+const inputStyle: React.CSSProperties = {
+  background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)",
+  borderRadius: 8, color: "#DDD", fontSize: 12, fontFamily: "inherit", padding: "8px 12px",
+};
