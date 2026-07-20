@@ -152,6 +152,9 @@ Creative System — внутренний инструмент производс
 |------|-----------|
 | `POST /api/meta/sync` | Синхронизация данных из Meta API |
 | `POST /api/meta/creatives` | Ингест ассетов крео (thumbnail/image/video_id) для превью и Gemini — обходит com+gov+**KumiSolo2** (`META_AD_ACCOUNT_ID_K2`), с пагинацией |
+| `GET /api/meta/video?videoId=` | 302 на свежий CDN-mp4 (`resolveMetaVideoSource`) — для просмотра видео-крео (source временный, резолвим по клику) |
+| `POST/GET /api/gemini/params` | Структурный разбор крео на параметры (формат/персона/хук/энгл/боди/чем силён/над чем штормить) через `analyzeCreativeParams`; кеш в `gemini_analyses(creative_params)` по ad_name; GET отдаёт карту для /weekly |
+| `POST /api/analytics/weekly/summary` | Сводный разбор недели: агрегаты в коде + Claude синтезирует паттерны по параметрам («над чем штормить» на уровне пачки); generate → summary, note → summary_note |
 | `POST /api/meta/pause` | Остановка объявлений через API |
 | `POST /api/pbi/upload` | Загрузка данных PBI |
 | `POST /api/pbi/elly-sync` | Синхронизация с Elly (Plurio) по SSE |

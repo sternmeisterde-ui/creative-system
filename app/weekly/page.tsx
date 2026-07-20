@@ -54,6 +54,7 @@ export default function WeeklyPage() {
   const [bulkRunning, setBulkRunning] = useState(false);
   const [summaryNote, setSummaryNote] = useState("");
   const [summaryBusy, setSummaryBusy] = useState(false);
+  const [docBusy, setDocBusy]     = useState(false);
   const [building, setBuilding]   = useState(false);
   const [loading, setLoading]     = useState(false);
   const [error, setError]         = useState<string | null>(null);
@@ -127,6 +128,29 @@ export default function WeeklyPage() {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reportId: selectedId, note: summaryNote }),
     });
+  }
+  async function genDocument() {
+    if (!selectedId) return;
+    setDocBusy(true); setError(null);
+    try {
+      const r = await fetch("/api/analytics/weekly/document", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reportId: selectedId }),
+      });
+      const j = await r.json();
+      if (j.error) { setError(j.error); return; }
+      setReport(prev => prev ? { ...prev, document: j.document } : prev);
+    } finally { setDocBusy(false); }
+  }
+  function downloadDocument() {
+    if (!report?.document) return;
+    const safe = report.label.replace(/[^\wа-яА-Я.-]+/gi, "_");
+    const blob = new Blob([report.document], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = window.document.createElement("a");
+    a.href = url; a.download = `chto-delaem_${safe}.md`;
+    a.click();
+    URL.revokeObjectURL(url);
   }
 
   async function genParams(adName: string) {
@@ -263,6 +287,29 @@ export default function WeeklyPage() {
           onTodoSave={() => saveTodo(row.adId)}
         />
       ))}
+
+      {!loading && report && report.rows.length > 0 && (
+        <Card style={{ marginTop: 8, border: "1px solid rgba(232,170,66,0.3)" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 10 }}>
+            <SectionTitle color="#E8AA42">📄 Документ «Что делаем» — направления на пачку → ТЗ</SectionTitle>
+            <div style={{ display: "flex", gap: 8 }}>
+              <Button variant="primary" onClick={genDocument} disabled={docBusy}>
+                {docBusy ? "Собираю…" : report.document ? "↻ Пересобрать" : "Собрать документ"}
+              </Button>
+              {report.document && <Button onClick={downloadDocument}>⬇️ Скачать .md</Button>}
+            </div>
+          </div>
+          {report.document ? (
+            <div style={{ fontSize: 13, color: "#DDD", lineHeight: 1.6, whiteSpace: "pre-wrap", background: "rgba(0,0,0,0.2)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 8, padding: 16, marginTop: 10 }}>
+              {report.document}
+            </div>
+          ) : (
+            <div style={{ fontSize: 12, color: "#666", marginTop: 10 }}>
+              {docBusy ? "Claude собирает направления из ту-ду…" : "Заполни «🎯 Что делаем?» по крео → собери документ. Он сведёт решения + разбор недели + шторм в направления на пачку, готовые стать ТЗ."}
+            </div>
+          )}
+        </Card>
+      )}
     </div>
   );
 }
@@ -367,8 +414,12 @@ function CreativeCard({ row, note, onNoteChange, onSave, onGenAI, params, params
   const st = STATUS[row.status];
   const band = hookBand(row.hookRate);
   const [open, setOpen] = useState(false);
+  const [imgError, setImgError] = useState(false);
   const isVideo = !!row.videoId;
   const frame: React.CSSProperties = { width: 150, height: 188, borderRadius: 8, border: "1px solid rgba(255,255,255,0.1)", display: "block", objectFit: "cover" };
+  // Превью Meta протухают → грузим свежее через резолвер по ad_id, не из снапшота.
+  const previewSrc = row.adId ? `/api/meta/thumb?adId=${encodeURIComponent(row.adId)}` : row.assetUrl;
+  const showImg = !!previewSrc && !imgError;
 
   useEffect(() => {
     if (!open) return;
@@ -388,9 +439,9 @@ function CreativeCard({ row, note, onNoteChange, onSave, onGenAI, params, params
               title="Смотреть видео крупно"
               style={{ position: "relative", padding: 0, border: "none", background: "none", cursor: "pointer", display: "block" }}
             >
-              {row.assetUrl ? (
+              {showImg ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={row.assetUrl} alt={row.adName} style={frame} />
+                <img src={previewSrc!} alt={row.adName} style={frame} onError={() => setImgError(true)} />
               ) : (
                 <div style={{ ...frame, background: "rgba(255,255,255,0.02)" }} />
               )}
@@ -398,14 +449,14 @@ function CreativeCard({ row, note, onNoteChange, onSave, onGenAI, params, params
                 <span style={{ width: 44, height: 44, borderRadius: "50%", background: "rgba(0,0,0,0.55)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 18 }}>▶</span>
               </span>
             </button>
-          ) : row.assetUrl ? (
-            <a href={row.assetUrl} target="_blank" rel="noreferrer">
+          ) : showImg ? (
+            <a href={previewSrc!} target="_blank" rel="noreferrer">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={row.assetUrl} alt={row.adName} style={frame} />
+              <img src={previewSrc!} alt={row.adName} style={frame} onError={() => setImgError(true)} />
             </a>
           ) : (
             <div style={{ ...frame, background: "rgba(255,255,255,0.02)", border: "1px dashed rgba(255,255,255,0.1)", display: "flex", alignItems: "center", justifyContent: "center", color: "#444", fontSize: 11, textAlign: "center", padding: 8 }}>
-              нет ассета{row.objectType ? ` (${row.objectType})` : ""}
+              нет превью{row.objectType ? ` (${row.objectType})` : ""}
             </div>
           )}
           <div style={{ marginTop: 8, display: "flex", gap: 6, flexWrap: "wrap" }}>
@@ -497,7 +548,7 @@ function CreativeCard({ row, note, onNoteChange, onSave, onGenAI, params, params
         >
           <video
             src={`/api/meta/video?videoId=${row.videoId}`}
-            poster={row.assetUrl ?? undefined}
+            poster={previewSrc ?? undefined}
             controls autoPlay
             onClick={e => e.stopPropagation()}
             style={{ height: "88vh", maxWidth: "94vw", borderRadius: 12, background: "#000", display: "block" }}
