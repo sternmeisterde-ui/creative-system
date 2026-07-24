@@ -64,6 +64,18 @@ Creative System — внутренний инструмент производс
 10. Анализ       → /analytics бивариативный → новые гипотезы → шаг 4
 ```
 
+### Понедельный субъективный цикл (`/weekly`) — основа для шторма
+Параллельная петля «данные → картина → решения → ТЗ», заменяет ручной разбор в Google Sheets:
+```
+1. Собрать неделю   → снапшот всех крео за пн–вс (spend/hook из Meta, лиды/квал из Plurio за окно)
+2. Смотреть крео    → превью (резолвер /api/meta/thumb) + видео в лайтбоксе (/api/meta/video)
+3. Разобрать        → Gemini вытаскивает параметры из СОДЕРЖАНИЯ (формат/персона/хук/энгл/боди), кеш по ad_name
+4. Разбор недели    → Claude: паттерны + «над чем штормить» на уровне пачки (объективные агрегаты в коде)
+5. «Что делаем?»    → команда фиксирует действие по каждому крео → собирается в «Ту-ду недели»
+6. Документ         → Claude сводит всё в один markdown-док направлений → скачать .md → ТЗ на крео
+```
+Логика: система даёт объективную картину → команда добавляет субъективку → готовый вход для брифов. Превью/видео Meta протухают → всегда резолвятся на лету, не хранятся.
+
 ---
 
 ## Нейминг объявлений
@@ -101,8 +113,8 @@ Creative System — внутренний инструмент производс
 | `competitor_concepts` | Концепты конкурентов — source, rawData, status |
 | `creative_alerts` | Алерты — alertType, dismissed |
 | `creative_generations` | Записи генераций Higgsfield |
-| `weekly_creative_reports` | Понедельные снапшоты субъективного анализа — week_start/end, rows[] (замороженные метрики per-крео) |
-| `weekly_creative_notes` | Субъективная оценка per-крео в снапшоте — note (человек) + ai_note (Gemini), грань (report_id, ad_id) |
+| `weekly_creative_reports` | Понедельные снапшоты субъективного анализа — week_start/end, rows[] (замороженные метрики per-крео), summary (AI-разбор недели, 027), summary_note (шторм команды, 027), document (итоговый док «Что делаем», 029) |
+| `weekly_creative_notes` | Оценка per-крео в снапшоте — note (человек) + ai_note (Gemini) + todo («Что делаем?», 028), грань (report_id, ad_id) |
 
 ### Ключевые views
 - `creative_performance` — объединяет `meta_ads` + `pbi_metrics`, вычисляет CPL, CPQL, `auto_status` (winner/loser/testing/unknown)
@@ -145,7 +157,8 @@ Creative System — внутренний инструмент производс
 | `GET /api/analytics/pack-health` | Здоровье пакета (доля виннеров) |
 | `POST /api/analytics/early-stop` | Рекомендации по остановке |
 | `GET/POST /api/analytics/weekly` | Понедельный снапшот: POST берёт spend/показы/клики/hook из meta_ads за окно, **лиды/квал — из Plurio за то же окно** (`syncElly(weekStart,weekEnd)`, т.к. дневной истории лидов в БД нет), join meta_creatives (фильтр по ad_id/имени — не вся таблица), GET листает/отдаёт. `maxDuration=300` |
-| `POST /api/analytics/weekly/note` | Сохранение субъективной заметки / генерация AI-разбора (Gemini flash) |
+| `POST /api/analytics/weekly/note` | Сохранение субъективной заметки (note) и/или «Что делаем?» (todo) раздельно / генерация AI-разбора (Gemini flash) |
+| `POST /api/analytics/weekly/document` | Итоговый док «Что делаем»: Claude сводит todo + разбор недели + шторм + параметры в один markdown-документ направлений → ТЗ (колонка document) |
 
 ### Meta / Данные
 | Роут | Назначение |
@@ -153,6 +166,7 @@ Creative System — внутренний инструмент производс
 | `POST /api/meta/sync` | Синхронизация данных из Meta API |
 | `POST /api/meta/creatives` | Ингест ассетов крео (thumbnail/image/video_id) для превью и Gemini — обходит com+gov+**KumiSolo2** (`META_AD_ACCOUNT_ID_K2`), с пагинацией |
 | `GET /api/meta/video?videoId=` | 302 на свежий CDN-mp4 (`resolveMetaVideoSource`) — для просмотра видео-крео (source временный, резолвим по клику) |
+| `GET /api/meta/thumb?adId=` | 302 на свежий thumbnail/image крео из Graph — превью Meta протухают за дни (403), поэтому НЕ хранятся, резолвятся на лету по ad_id |
 | `POST/GET /api/gemini/params` | Структурный разбор крео на параметры (формат/персона/хук/энгл/боди/чем силён/над чем штормить) через `analyzeCreativeParams`; кеш в `gemini_analyses(creative_params)` по ad_name; GET отдаёт карту для /weekly |
 | `POST /api/analytics/weekly/summary` | Сводный разбор недели: агрегаты в коде + Claude синтезирует паттерны по параметрам («над чем штормить» на уровне пачки); generate → summary, note → summary_note |
 | `POST /api/meta/pause` | Остановка объявлений через API |
