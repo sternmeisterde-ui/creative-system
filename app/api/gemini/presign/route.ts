@@ -10,9 +10,15 @@ export async function POST(req: NextRequest) {
   const supabase = createServiceClient();
   const path = `tmp/${Date.now()}-${filename.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
 
-  const { data, error } = await supabase.storage
+  let { data, error } = await supabase.storage
     .from(BUCKET)
     .createSignedUploadUrl(path);
+
+  // Само-исцеление: бакет мог быть удалён/не создан → создаём public и пробуем ещё раз.
+  if (error && !data) {
+    await supabase.storage.createBucket(BUCKET, { public: true });
+    ({ data, error } = await supabase.storage.from(BUCKET).createSignedUploadUrl(path));
+  }
 
   if (error || !data) {
     return NextResponse.json({ error: error?.message ?? "Failed to create upload URL" }, { status: 500 });
