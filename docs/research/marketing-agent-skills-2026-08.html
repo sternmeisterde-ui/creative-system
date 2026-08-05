@@ -1,0 +1,1392 @@
+<title>Маркетинговые агентские скиллы на GitHub — срез за июль 2026</title>
+
+<style>
+  :root {
+    --ground: #0B0D12;
+    --surface: #12151C;
+    --surface-2: #171B24;
+    --hairline: rgba(232, 170, 66, 0.16);
+    --hairline-soft: rgba(233, 228, 218, 0.09);
+    --ink: #E9E4DA;
+    --ink-2: #A8A296;
+    --ink-3: #6F6A62;
+    --accent: #E8AA42;
+    --accent-soft: rgba(232, 170, 66, 0.12);
+    --cat-1: #E8AA42;
+    --cat-2: #48B8D0;
+    --cat-3: #D96B6B;
+    --cat-4: #BE93E8;
+    --mono: ui-monospace, "SFMono-Regular", "JetBrains Mono", Menlo, Consolas, "Liberation Mono", monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  }
+
+  @media (prefers-color-scheme: light) {
+    :root {
+      --ground: #F7F4EE;
+      --surface: #FFFFFF;
+      --surface-2: #FBF9F4;
+      --hairline: rgba(143, 100, 16, 0.22);
+      --hairline-soft: rgba(22, 24, 29, 0.11);
+      --ink: #16181D;
+      --ink-2: #514C44;
+      --ink-3: #837D73;
+      --accent: #8F6410;
+      --accent-soft: rgba(143, 100, 16, 0.10);
+      --cat-1: #8F6410;
+      --cat-2: #0C7CAA;
+      --cat-3: #B82F2F;
+      --cat-4: #8A4BA8;
+    }
+  }
+
+  :root[data-theme="light"] {
+    --ground: #F7F4EE;
+    --surface: #FFFFFF;
+    --surface-2: #FBF9F4;
+    --hairline: rgba(143, 100, 16, 0.22);
+    --hairline-soft: rgba(22, 24, 29, 0.11);
+    --ink: #16181D;
+    --ink-2: #514C44;
+    --ink-3: #837D73;
+    --accent: #8F6410;
+    --accent-soft: rgba(143, 100, 16, 0.10);
+    --cat-1: #8F6410;
+    --cat-2: #0C7CAA;
+    --cat-3: #B82F2F;
+    --cat-4: #8A4BA8;
+  }
+
+  :root[data-theme="dark"] {
+    --ground: #0B0D12;
+    --surface: #12151C;
+    --surface-2: #171B24;
+    --hairline: rgba(232, 170, 66, 0.16);
+    --hairline-soft: rgba(233, 228, 218, 0.09);
+    --ink: #E9E4DA;
+    --ink-2: #A8A296;
+    --ink-3: #6F6A62;
+    --accent: #E8AA42;
+    --accent-soft: rgba(232, 170, 66, 0.12);
+    --cat-1: #E8AA42;
+    --cat-2: #48B8D0;
+    --cat-3: #D96B6B;
+    --cat-4: #BE93E8;
+  }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 1160px;
+    margin: 0 auto;
+    padding: 0 28px 96px;
+  }
+
+  .prose { max-width: 68ch; }
+
+  /* ---------- masthead ---------- */
+
+  .masthead {
+    border-bottom: 1px solid var(--hairline);
+    padding: 72px 0 32px;
+    display: flex;
+    flex-direction: column;
+    gap: 26px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--accent);
+  }
+
+  h1 {
+    font-family: var(--mono);
+    font-size: clamp(30px, 5.2vw, 54px);
+    line-height: 1.06;
+    letter-spacing: -0.035em;
+    font-weight: 600;
+    text-wrap: balance;
+    margin: 0;
+  }
+
+  h1 .dim { color: var(--ink-3); }
+
+  .standfirst {
+    font-size: 19px;
+    line-height: 1.55;
+    color: var(--ink-2);
+    max-width: 62ch;
+    text-wrap: pretty;
+  }
+
+  .factbar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0;
+    border: 1px solid var(--hairline-soft);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .fact {
+    flex: 1 1 150px;
+    padding: 14px 18px;
+    border-right: 1px solid var(--hairline-soft);
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+
+  .fact:last-child { border-right: 0; }
+
+  .fact dt {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.13em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+  }
+
+  .fact dd {
+    font-family: var(--mono);
+    font-size: 17px;
+    font-variant-numeric: tabular-nums;
+    color: var(--ink);
+    margin: 0;
+  }
+
+  /* ---------- sections ---------- */
+
+  section { padding-top: 64px; }
+
+  .sec-head {
+    display: flex;
+    align-items: baseline;
+    gap: 14px;
+    border-bottom: 1px solid var(--hairline);
+    padding-bottom: 10px;
+    margin-bottom: 28px;
+  }
+
+  .sec-head h2 {
+    font-family: var(--mono);
+    font-size: 20px;
+    letter-spacing: -0.015em;
+    font-weight: 600;
+    margin: 0;
+  }
+
+  .sec-head .marker {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    letter-spacing: 0.1em;
+  }
+
+  h3 {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0;
+    margin: 32px 0 10px;
+  }
+
+  p { margin: 0 0 14px; text-wrap: pretty; }
+  p:last-child { margin-bottom: 0; }
+
+  a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px solid var(--accent-soft);
+  }
+  a:hover { border-bottom-color: var(--accent); }
+  a:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--accent-soft);
+    padding: 1px 5px;
+    border-radius: 2px;
+  }
+
+  .note {
+    background: var(--surface);
+    border: 1px solid var(--hairline-soft);
+    border-radius: 3px;
+    padding: 20px 22px;
+    font-size: 15px;
+    color: var(--ink-2);
+    max-width: 74ch;
+  }
+
+  .note strong { color: var(--ink); font-weight: 600; }
+
+  /* ---------- charts ---------- */
+
+  .hero-stat {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 20px 34px;
+    background: var(--surface);
+    border: 1px solid var(--hairline);
+    border-radius: 3px;
+    padding: 24px 26px;
+    margin-bottom: 32px;
+  }
+
+  .hero-stat .num {
+    font-family: var(--mono);
+    font-size: clamp(38px, 7vw, 60px);
+    line-height: 1;
+    letter-spacing: -0.04em;
+    color: var(--accent);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .hero-stat .who {
+    font-family: var(--mono);
+    font-size: 15px;
+    color: var(--ink);
+  }
+
+  .hero-stat .why {
+    font-size: 14.5px;
+    color: var(--ink-2);
+    max-width: 46ch;
+  }
+
+  .chart {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    margin: 4px 0 10px;
+  }
+
+  .bar-row {
+    display: grid;
+    grid-template-columns: minmax(140px, 260px) 1fr 66px;
+    align-items: center;
+    gap: 14px;
+    padding: 5px 6px;
+    border-radius: 2px;
+    cursor: default;
+  }
+
+  .bar-row:hover { background: var(--surface); }
+
+  .bar-row .name {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .bar-row .name .owner { color: var(--ink-3); }
+
+  .track { height: 13px; position: relative; }
+
+  .bar {
+    height: 100%;
+    border-radius: 0 4px 4px 0;
+    background: var(--accent);
+  }
+
+  .bar.new { background: var(--cat-2); }
+
+  .bar-row .val {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    font-variant-numeric: tabular-nums;
+    text-align: right;
+    color: var(--ink-2);
+  }
+
+  figure {
+    margin: 0 0 8px;
+    background: var(--surface);
+    border: 1px solid var(--hairline-soft);
+    border-radius: 3px;
+    padding: 26px 24px 18px;
+    overflow-x: auto;
+  }
+
+  figure svg {
+    display: block;
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto;
+    color: var(--ink);
+  }
+
+  figcaption {
+    font-size: 13.5px;
+    line-height: 1.5;
+    color: var(--ink-2);
+    margin-top: 18px;
+    padding-top: 14px;
+    border-top: 1px solid var(--hairline-soft);
+    max-width: 78ch;
+  }
+
+  figcaption b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- dossier ---------- */
+
+  .dossier {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+  }
+
+  .entry {
+    display: grid;
+    grid-template-columns: 232px 1fr;
+    gap: 34px;
+    padding: 34px 0;
+    border-bottom: 1px solid var(--hairline-soft);
+  }
+
+  .entry:first-child { padding-top: 8px; }
+
+  .rail {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    position: relative;
+  }
+
+  .rank {
+    font-family: var(--mono);
+    font-size: 13px;
+    letter-spacing: 0.1em;
+    color: var(--ink-3);
+  }
+
+  .repo {
+    font-family: var(--mono);
+    font-size: 15px;
+    line-height: 1.35;
+    font-weight: 600;
+    word-break: break-word;
+  }
+
+  .repo .owner { color: var(--ink-3); font-weight: 400; }
+
+  .spec {
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .spec div {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px dotted var(--hairline-soft);
+    padding-bottom: 5px;
+  }
+
+  .spec dt { color: var(--ink-3); }
+  .spec dd { color: var(--ink); margin: 0; text-align: right; }
+
+  .tag {
+    align-self: flex-start;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    padding: 4px 8px;
+    border-radius: 2px;
+    border: 1px solid currentColor;
+    white-space: nowrap;
+  }
+
+  .tag.a1 { color: var(--cat-1); }
+  .tag.a2 { color: var(--cat-2); }
+  .tag.a3 { color: var(--cat-3); }
+  .tag.a4 { color: var(--cat-4); }
+
+  .body h4 {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    margin: 20px 0 8px;
+    font-weight: 500;
+  }
+
+  .body h4:first-child { margin-top: 0; }
+
+  .body p, .body ul { max-width: 72ch; }
+
+  .body ul {
+    margin: 0 0 14px;
+    padding-left: 20px;
+  }
+
+  .body li { margin-bottom: 6px; }
+
+  .steal {
+    border-left: 2px solid var(--accent);
+    padding: 2px 0 2px 16px;
+    color: var(--ink-2);
+    font-size: 15px;
+    max-width: 70ch;
+  }
+
+  .steal b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- apply table ---------- */
+
+  .apply {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14.5px;
+  }
+
+  .apply th {
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.11em;
+    text-transform: uppercase;
+    color: var(--ink-3);
+    font-weight: 500;
+    padding: 0 16px 10px 0;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .apply td {
+    padding: 14px 16px 14px 0;
+    border-bottom: 1px solid var(--hairline-soft);
+    vertical-align: top;
+    color: var(--ink-2);
+  }
+
+  .apply td:first-child {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink);
+    white-space: nowrap;
+  }
+
+  .apply td:nth-child(2) { color: var(--ink); }
+
+  .table-scroll { overflow-x: auto; }
+
+  /* ---------- sources ---------- */
+
+  .sources {
+    columns: 2;
+    column-gap: 40px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.9;
+  }
+
+  .sources a { break-inside: avoid; }
+
+  .foot {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--hairline);
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-3);
+  }
+
+  /* ---------- tooltip ---------- */
+
+  #tip {
+    position: fixed;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 90ms linear;
+    background: var(--surface-2);
+    border: 1px solid var(--hairline);
+    border-radius: 3px;
+    padding: 9px 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--ink);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.35);
+    z-index: 50;
+    max-width: 280px;
+  }
+
+  #tip .t-name { color: var(--accent); }
+  #tip .t-meta { color: var(--ink-2); }
+
+  @media (prefers-reduced-motion: reduce) {
+    * { transition: none !important; animation: none !important; }
+  }
+
+  @media (max-width: 760px) {
+    .entry { grid-template-columns: 1fr; gap: 20px; }
+    .bar-row { grid-template-columns: minmax(110px, 1fr) 1.4fr 56px; gap: 10px; }
+    .sources { columns: 1; }
+    .wrap { padding: 0 18px 72px; }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <div class="eyebrow">Разведка · 5 июля — 5 августа 2026</div>
+    <h1>Маркетинговые скиллы<br><span class="dim">на GitHub:</span> что собрало звёзды<br><span class="dim">и как это устроено внутри</span></h1>
+    <p class="standfirst">Двенадцать репозиториев агентских скиллов для маркетинга — разобранные не по описанию, а по механике: как скилл попадает в контекст, кто решает, какой следующий, и что отличает работающий конвейер от свалки промптов.</p>
+    <dl class="factbar">
+      <div class="fact"><dt>Просканировано</dt><dd>30+ репо</dd></div>
+      <div class="fact"><dt>Разобрано</dt><dd>12 + 4</dd></div>
+      <div class="fact"><dt>Окно</dt><dd>05.07 — 05.08</dd></div>
+      <div class="fact"><dt>Данные на</dt><dd>05.08.2026</dd></div>
+      <div class="fact"><dt>Источник</dt><dd>GitHub Search API</dd></div>
+    </dl>
+  </header>
+
+  <section>
+    <div class="sec-head"><span class="marker">§ 01</span><h2>Как считалось</h2></div>
+    <div class="note">
+      <p><strong>Оговорка, без которой рейтинг врёт.</strong> GitHub не отдаёт прирост звёзд за произвольный период — ни через Search API, ни через REST. Поэтому «самые залайканные за месяц» разложены на два честных среза.</p>
+      <p><strong>Срез A — абсолютный рейтинг живых.</strong> Репозитории с маркетинговыми скиллами, у которых есть коммиты в окне 05.07–05.08.2026, отсортированные по общему числу звёзд. Это «кто сейчас на слуху», а не «кто вырос за месяц».</p>
+      <p><strong>Срез B — когорта новичков.</strong> Репозитории, созданные внутри окна. Здесь число звёзд <em>и есть</em> чистый прирост за месяц — единственная величина, которую можно назвать месячной без натяжки.</p>
+      <p style="margin-bottom:0">Два крупных репозитория (<code>kostja94/marketing-skills</code>, 852★ и <code>Affitor/affiliate-skills</code>, 586★) в срез A не попали — последние коммиты в июне. Разбор одного из них ниже всё равно есть: архитектура важнее свежести.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="marker">§ 02</span><h2>Срез A · рейтинг по звёздам</h2></div>
+
+    <div class="hero-stat">
+      <div class="num">43&nbsp;026</div>
+      <div>
+        <div class="who">coreyhaines31 / marketingskills</div>
+        <div class="why">Вне шкалы — в 17 раз больше второго места. Вынесен из графика, иначе остальные двенадцать столбцов превращаются в полоски по пикселю.</div>
+      </div>
+    </div>
+
+    <div class="chart" id="chart-a">
+      <div class="bar-row" data-skills="120 скиллов · 7 дисциплин" data-pushed="коммит 05.08">
+        <span class="name"><span class="owner">aaron-he-zhu/</span>aaron-marketing-skills</span>
+        <span class="track"><span class="bar" style="width:100%"></span></span>
+        <span class="val">2 508</span>
+      </div>
+      <div class="bar-row" data-skills="62 скилла · 12 метаскиллов" data-pushed="коммит 22.07">
+        <span class="name"><span class="owner">wondelai/</span>skills</span>
+        <span class="track"><span class="bar" style="width:73.4%"></span></span>
+        <span class="val">1 840</span>
+      </div>
+      <div class="bar-row" data-skills="40+ скиллов · ASO" data-pushed="коммит 27.07">
+        <span class="name"><span class="owner">Eronred/</span>aso-skills</span>
+        <span class="track"><span class="bar" style="width:68.2%"></span></span>
+        <span class="val">1 710</span>
+      </div>
+      <div class="bar-row" data-skills="30 сабскиллов · 5 агентов" data-pushed="коммит 23.07">
+        <span class="name"><span class="owner">AgriciDaniel/</span>claude-blog</span>
+        <span class="track"><span class="bar" style="width:62.7%"></span></span>
+        <span class="val">1 572</span>
+      </div>
+      <div class="bar-row" data-skills="1 файл · ~8k токенов" data-pushed="создан 24.07">
+        <span class="name"><span class="owner">mikiarlo3/</span>ai-copywriter</span>
+        <span class="track"><span class="bar" style="width:40.8%"></span></span>
+        <span class="val">1 023</span>
+      </div>
+      <div class="bar-row" data-skills="158 скиллов · 24 агента" data-pushed="коммит 01.08">
+        <span class="name"><span class="owner">indranilbanerjee/</span>digital-marketing-pro</span>
+        <span class="track"><span class="bar" style="width:28.1%"></span></span>
+        <span class="val">705</span>
+      </div>
+      <div class="bar-row" data-skills="69+ скиллов · 20+ API" data-pushed="коммит 04.08">
+        <span class="name"><span class="owner">OpenClaudia/</span>openclaudia-skills</span>
+        <span class="track"><span class="bar" style="width:24.5%"></span></span>
+        <span class="val">614</span>
+      </div>
+      <div class="bar-row" data-skills="28 скиллов · 93 команды" data-pushed="коммит 15.07">
+        <span class="name"><span class="owner">aitytech/</span>agentkits-marketing</span>
+        <span class="track"><span class="bar" style="width:23.0%"></span></span>
+        <span class="val">578</span>
+      </div>
+      <div class="bar-row" data-skills="64 скилла · 6 доменов" data-pushed="коммит 31.07">
+        <span class="name"><span class="owner">Varnan-Tech/</span>opendirectory</span>
+        <span class="track"><span class="bar" style="width:22.8%"></span></span>
+        <span class="val">571</span>
+      </div>
+      <div class="bar-row" data-skills="63 скилла · VN + Global" data-pushed="коммит 30.07">
+        <span class="name"><span class="owner">minhnv0807/</span>ai-business-skills</span>
+        <span class="track"><span class="bar" style="width:20.8%"></span></span>
+        <span class="val">521</span>
+      </div>
+      <div class="bar-row" data-skills="13 скилл-файлов · DAG" data-pushed="коммит 04.08">
+        <span class="name"><span class="owner">acogood/</span>diffmode_free</span>
+        <span class="track"><span class="bar" style="width:6.1%"></span></span>
+        <span class="val">153</span>
+      </div>
+      <div class="bar-row" data-skills="37 скиллов · коннекторы" data-pushed="коммит 06.07">
+        <span class="name"><span class="owner">davidpc007/</span>openclaw-marketing-skills</span>
+        <span class="track"><span class="bar" style="width:5.9%"></span></span>
+        <span class="val">147</span>
+      </div>
+    </div>
+    <p style="font-size:13px;color:var(--ink-3);font-family:var(--mono);margin-top:6px">Звёзды всего · только репозитории с коммитами в окне · лидер вынесен отдельно</p>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="marker">§ 03</span><h2>Срез B · новички месяца</h2></div>
+
+    <div class="chart" id="chart-b">
+      <div class="bar-row" data-skills="копирайтинг + деAI-зация" data-pushed="создан 24.07">
+        <span class="name"><span class="owner">mikiarlo3/</span>ai-copywriter</span>
+        <span class="track"><span class="bar new" style="width:100%"></span></span>
+        <span class="val">1 023</span>
+      </div>
+      <div class="bar-row" data-skills="86 скиллов роста" data-pushed="создан 20.07">
+        <span class="name"><span class="owner">krillinai/</span>growth-skills</span>
+        <span class="track"><span class="bar new" style="width:2.8%"></span></span>
+        <span class="val">29</span>
+      </div>
+      <div class="bar-row" data-skills="бренд-память как сервис" data-pushed="создан 14.07">
+        <span class="name"><span class="owner">hogan-tech/</span>brand-loom</span>
+        <span class="track"><span class="bar new" style="width:2.2%"></span></span>
+        <span class="val">22</span>
+      </div>
+      <div class="bar-row" data-skills="скрипт → войс → сцены → музыка" data-pushed="создан 07.07">
+        <span class="name"><span class="owner">boring-marketing-com/</span>ai-short-form-video-skill</span>
+        <span class="track"><span class="bar new" style="width:1.8%"></span></span>
+        <span class="val">18</span>
+      </div>
+      <div class="bar-row" data-skills="10 скиллов" data-pushed="создан 17.07">
+        <span class="name"><span class="owner">crealwork/</span>ai-marketing-kit</span>
+        <span class="track"><span class="bar new" style="width:1.6%"></span></span>
+        <span class="val">16</span>
+      </div>
+      <div class="bar-row" data-skills="106 скиллов соцсетей" data-pushed="создан 16.07">
+        <span class="name"><span class="owner">social-media-skills/</span>skills</span>
+        <span class="track"><span class="bar new" style="width:1.3%"></span></span>
+        <span class="val">13</span>
+      </div>
+      <div class="bar-row" data-skills="линтер прозы на 9 языков" data-pushed="создан 18.07">
+        <span class="name"><span class="owner">HiroHyun/</span>grounded-copy</span>
+        <span class="track"><span class="bar new" style="width:1.2%"></span></span>
+        <span class="val">12</span>
+      </div>
+    </div>
+
+    <p class="prose" style="margin-top:22px">Разрыв 1023 против 29 — это и есть главный вывод месяца. Ниша «ещё одна библиотека из 100 маркетинговых скиллов» насыщена: восемь таких репозиториев, созданных в июле, суммарно не дотянули до сотни звёзд. Пробилось единственное — <em>один файл с одним углом</em>: копирайтинг, который одновременно вычищает следы ИИ из текста. Не объём знаний, а конкретная боль, которую до этого закрывали двумя разными инструментами.</p>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="marker">§ 04</span><h2>Механика · как скилл вообще срабатывает</h2></div>
+
+    <figure>
+      <svg viewBox="0 0 900 320" role="img" aria-label="Трёхуровневая загрузка скилла: фронтматтер всех скиллов всегда в контексте, тело SKILL.md грузится при совпадении описания, справочники и скрипты — по требованию">
+        <defs>
+          <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <polygon points="0,0 10,5 0,10" fill="currentColor"></polygon>
+          </marker>
+          <marker id="ar-a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <polygon points="0,0 10,5 0,10" fill="var(--accent)"></polygon>
+          </marker>
+        </defs>
+
+        <text x="18" y="26" font-family="ui-monospace, monospace" font-size="11" fill="currentColor" opacity="0.55" letter-spacing="1.2">УРОВЕНЬ 0 · ВСЕГДА В КОНТЕКСТЕ</text>
+        <rect x="18" y="38" width="250" height="86" rx="3" fill="none" stroke="currentColor" stroke-opacity="0.3"></rect>
+        <text x="34" y="60" font-family="ui-monospace, monospace" font-size="12" fill="currentColor">name: cro</text>
+        <text x="34" y="78" font-family="ui-monospace, monospace" font-size="12" fill="currentColor" opacity="0.7">description: «моя посадочная</text>
+        <text x="34" y="94" font-family="ui-monospace, monospace" font-size="12" fill="currentColor" opacity="0.7">не конвертит», «CRO», URL…</text>
+        <text x="34" y="113" font-family="ui-monospace, monospace" font-size="11" fill="var(--accent)">~80 токенов × все скиллы</text>
+
+        <text x="18" y="168" font-family="ui-monospace, monospace" font-size="11" fill="currentColor" opacity="0.55" letter-spacing="1.2">ЗАПРОС</text>
+        <rect x="18" y="180" width="250" height="46" rx="3" fill="none" stroke="currentColor" stroke-opacity="0.3"></rect>
+        <text x="34" y="208" font-family="ui-monospace, monospace" font-size="12" fill="currentColor">«посмотри лендинг, он не тянет»</text>
+
+        <line x1="268" y1="203" x2="352" y2="203" stroke="var(--accent)" stroke-width="1.5" marker-end="url(#ar-a)"></line>
+        <line x1="143" y1="124" x2="143" y2="174" stroke="currentColor" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="3 3"></line>
+        <text x="152" y="152" font-family="ui-monospace, monospace" font-size="10.5" fill="currentColor" opacity="0.6">сверяется с description</text>
+
+        <text x="358" y="26" font-family="ui-monospace, monospace" font-size="11" fill="currentColor" opacity="0.55" letter-spacing="1.2">УРОВЕНЬ 1 · ГРУЗИТСЯ ПРИ СОВПАДЕНИИ</text>
+        <rect x="358" y="38" width="228" height="188" rx="3" fill="none" stroke="var(--accent)" stroke-width="1.5"></rect>
+        <text x="374" y="62" font-family="ui-monospace, monospace" font-size="12.5" fill="var(--accent)">skills/cro/SKILL.md</text>
+        <line x1="374" y1="72" x2="570" y2="72" stroke="currentColor" stroke-opacity="0.2"></line>
+        <text x="374" y="92" font-family="ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.85">1 · проверка контекста</text>
+        <text x="374" y="110" font-family="ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.85">2 · рубрика из 7 осей</text>
+        <text x="374" y="128" font-family="ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.85">3 · формат вывода</text>
+        <text x="374" y="146" font-family="ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.85">4 · вопросы к юзеру</text>
+        <text x="374" y="164" font-family="ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.85">5 · related skills →</text>
+        <text x="374" y="196" font-family="ui-monospace, monospace" font-size="11" fill="var(--accent)">2–8k токенов · один скилл</text>
+
+        <line x1="586" y1="100" x2="668" y2="100" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2" marker-end="url(#ar)"></line>
+        <text x="596" y="92" font-family="ui-monospace, monospace" font-size="10.5" fill="currentColor" opacity="0.6">читает файл</text>
+
+        <text x="674" y="26" font-family="ui-monospace, monospace" font-size="11" fill="currentColor" opacity="0.55" letter-spacing="1.2">УРОВЕНЬ 2 · ПО ТРЕБОВАНИЮ</text>
+        <rect x="674" y="38" width="208" height="40" rx="3" fill="none" stroke="currentColor" stroke-opacity="0.3"></rect>
+        <text x="688" y="63" font-family="ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.85">references/experiments.md</text>
+        <rect x="674" y="86" width="208" height="40" rx="3" fill="none" stroke="currentColor" stroke-opacity="0.3"></rect>
+        <text x="688" y="111" font-family="ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.85">references/forms.md</text>
+        <rect x="674" y="134" width="208" height="40" rx="3" fill="none" stroke="currentColor" stroke-opacity="0.3"></rect>
+        <text x="688" y="159" font-family="ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.85">scripts/score.py</text>
+
+        <line x1="586" y1="164" x2="668" y2="188" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2" marker-end="url(#ar)"></line>
+        <rect x="674" y="182" width="208" height="44" rx="3" fill="none" stroke="var(--accent)" stroke-opacity="0.6" stroke-dasharray="4 3"></rect>
+        <text x="688" y="200" font-family="ui-monospace, monospace" font-size="11.5" fill="var(--accent)">→ следующий скилл</text>
+        <text x="688" y="217" font-family="ui-monospace, monospace" font-size="11" fill="currentColor" opacity="0.7">copywriting · ab-testing</text>
+
+        <line x1="18" y1="258" x2="882" y2="258" stroke="currentColor" stroke-opacity="0.15"></line>
+        <text x="18" y="284" font-family="ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.75">Отсюда следствие: description — не аннотация, а единственный вход. По нему одному агент решает,</text>
+        <text x="18" y="302" font-family="ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.75">грузить ли остальные 8 000 токенов. Поэтому в лучших репозиториях там разговорные фразы, а не термины.</text>
+      </svg>
+      <figcaption><b>Прогрессивное раскрытие.</b> Фронтматтеры всех скиллов постоянно висят в контексте — их суммарная цена и есть налог на размер библиотеки. Тело скилла подтягивается только при совпадении с описанием, справочники и скрипты — уже изнутри работы. Библиотека из 158 скиллов стоит примерно 12k токенов «просто чтобы быть доступной», и это единственная причина, по которой мега-репозитории вообще спорны.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="marker">§ 05</span><h2>Четыре архетипа · чем они реально отличаются</h2></div>
+
+    <figure>
+      <svg viewBox="0 0 900 430" role="img" aria-label="Сравнение четырёх архетипов организации скиллов: плоская библиотека, фазовый конвейер с воротами, замкнутый маховик, исполнительный слой с внешними API">
+        <defs>
+          <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="var(--cat-1)"></polygon></marker>
+          <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="var(--cat-2)"></polygon></marker>
+          <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="var(--cat-3)"></polygon></marker>
+          <marker id="a4" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="var(--cat-4)"></polygon></marker>
+        </defs>
+
+        <!-- A. Библиотека -->
+        <text x="14" y="20" font-family="ui-monospace, monospace" font-size="11.5" fill="var(--cat-1)" letter-spacing="1">A · БИБЛИОТЕКА</text>
+        <text x="14" y="38" font-family="ui-monospace, monospace" font-size="10.5" fill="currentColor" opacity="0.6">порядок задаёт человек</text>
+        <circle cx="110" cy="128" r="34" fill="none" stroke="var(--cat-1)" stroke-width="1.6"></circle>
+        <text x="110" y="124" font-family="ui-monospace, monospace" font-size="10" fill="var(--cat-1)" text-anchor="middle">product-</text>
+        <text x="110" y="136" font-family="ui-monospace, monospace" font-size="10" fill="var(--cat-1)" text-anchor="middle">marketing</text>
+        <rect x="20" y="56" width="62" height="26" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.4"></rect>
+        <text x="51" y="73" font-family="ui-monospace, monospace" font-size="10" fill="currentColor" text-anchor="middle">cro</text>
+        <rect x="138" y="56" width="62" height="26" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.4"></rect>
+        <text x="169" y="73" font-family="ui-monospace, monospace" font-size="10" fill="currentColor" text-anchor="middle">seo</text>
+        <rect x="20" y="176" width="62" height="26" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.4"></rect>
+        <text x="51" y="193" font-family="ui-monospace, monospace" font-size="10" fill="currentColor" text-anchor="middle">ads</text>
+        <rect x="138" y="176" width="62" height="26" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.4"></rect>
+        <text x="169" y="193" font-family="ui-monospace, monospace" font-size="10" fill="currentColor" text-anchor="middle">copy</text>
+        <line x1="66" y1="82" x2="92" y2="102" stroke="var(--cat-1)" stroke-width="1.2" marker-end="url(#a1)"></line>
+        <line x1="154" y1="82" x2="128" y2="102" stroke="var(--cat-1)" stroke-width="1.2" marker-end="url(#a1)"></line>
+        <line x1="66" y1="176" x2="92" y2="154" stroke="var(--cat-1)" stroke-width="1.2" marker-end="url(#a1)"></line>
+        <line x1="154" y1="176" x2="128" y2="154" stroke="var(--cat-1)" stroke-width="1.2" marker-end="url(#a1)"></line>
+        <line x1="82" y1="69" x2="136" y2="69" stroke="currentColor" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="3 3"></line>
+        <line x1="82" y1="189" x2="136" y2="189" stroke="currentColor" stroke-opacity="0.35" stroke-width="1" stroke-dasharray="3 3"></line>
+        <text x="110" y="228" font-family="ui-monospace, monospace" font-size="10" fill="currentColor" opacity="0.6" text-anchor="middle">сплошная — «читает контекст»</text>
+        <text x="110" y="242" font-family="ui-monospace, monospace" font-size="10" fill="currentColor" opacity="0.6" text-anchor="middle">пунктир — «см. также»</text>
+
+        <line x1="228" y1="14" x2="228" y2="256" stroke="currentColor" stroke-opacity="0.15"></line>
+
+        <!-- B. Конвейер -->
+        <text x="248" y="20" font-family="ui-monospace, monospace" font-size="11.5" fill="var(--cat-2)" letter-spacing="1">B · КОНВЕЙЕР С ВОРОТАМИ</text>
+        <text x="248" y="38" font-family="ui-monospace, monospace" font-size="10.5" fill="currentColor" opacity="0.6">порядок задаёт контракт скилла</text>
+        <rect x="248" y="60" width="72" height="30" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.45"></rect>
+        <text x="284" y="79" font-family="ui-monospace, monospace" font-size="10" fill="currentColor" text-anchor="middle">Research</text>
+        <rect x="248" y="102" width="72" height="30" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.45"></rect>
+        <text x="284" y="121" font-family="ui-monospace, monospace" font-size="10" fill="currentColor" text-anchor="middle">Orchestr.</text>
+        <rect x="248" y="144" width="72" height="30" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.45"></rect>
+        <text x="284" y="163" font-family="ui-monospace, monospace" font-size="10" fill="currentColor" text-anchor="middle">Activate</text>
+        <rect x="248" y="186" width="72" height="30" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.45"></rect>
+        <text x="284" y="205" font-family="ui-monospace, monospace" font-size="10" fill="currentColor" text-anchor="middle">Scale</text>
+        <line x1="284" y1="90" x2="284" y2="98" stroke="var(--cat-2)" stroke-width="1.2" marker-end="url(#a2)"></line>
+        <line x1="284" y1="132" x2="284" y2="140" stroke="var(--cat-2)" stroke-width="1.2" marker-end="url(#a2)"></line>
+        <line x1="284" y1="174" x2="284" y2="182" stroke="var(--cat-2)" stroke-width="1.2" marker-end="url(#a2)"></line>
+        <line x1="320" y1="201" x2="352" y2="201" stroke="var(--cat-2)" stroke-width="1.2" marker-end="url(#a2)"></line>
+        <polygon points="392,178 424,201 392,224 360,201" fill="none" stroke="var(--cat-2)" stroke-width="1.6"></polygon>
+        <text x="392" y="205" font-family="ui-monospace, monospace" font-size="9.5" fill="var(--cat-2)" text-anchor="middle">аудит</text>
+        <path d="M 392 178 L 392 70 L 324 70" fill="none" stroke="var(--cat-2)" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#a2)"></path>
+        <text x="400" y="66" font-family="ui-monospace, monospace" font-size="10" fill="var(--cat-2)">FIX ≤3</text>
+        <line x1="424" y1="201" x2="452" y2="201" stroke="var(--cat-2)" stroke-width="1.4" marker-end="url(#a2)"></line>
+        <text x="400" y="245" font-family="ui-monospace, monospace" font-size="10" fill="currentColor" opacity="0.65">SHIP / FIX / BLOCK</text>
+
+        <line x1="470" y1="14" x2="470" y2="256" stroke="currentColor" stroke-opacity="0.15"></line>
+
+        <!-- C. Маховик -->
+        <text x="490" y="20" font-family="ui-monospace, monospace" font-size="11.5" fill="var(--cat-4)" letter-spacing="1">C · МАХОВИК</text>
+        <text x="490" y="38" font-family="ui-monospace, monospace" font-size="10.5" fill="currentColor" opacity="0.6">порядок задаёт chain_metadata</text>
+        <circle cx="578" cy="140" r="66" fill="none" stroke="var(--cat-4)" stroke-width="1.4" stroke-dasharray="3 4"></circle>
+        <rect x="546" y="60" width="64" height="24" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.45"></rect>
+        <text x="578" y="76" font-family="ui-monospace, monospace" font-size="9.5" fill="currentColor" text-anchor="middle">S1 ресёрч</text>
+        <rect x="638" y="128" width="64" height="24" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.45"></rect>
+        <text x="670" y="144" font-family="ui-monospace, monospace" font-size="9.5" fill="currentColor" text-anchor="middle">S2 контент</text>
+        <rect x="546" y="196" width="64" height="24" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.45"></rect>
+        <text x="578" y="212" font-family="ui-monospace, monospace" font-size="9.5" fill="currentColor" text-anchor="middle">S4 оффер</text>
+        <rect x="486" y="128" width="64" height="24" rx="2" fill="none" stroke="var(--cat-4)" stroke-width="1.4"></rect>
+        <text x="518" y="144" font-family="ui-monospace, monospace" font-size="9.5" fill="var(--cat-4)" text-anchor="middle">S6 аналит.</text>
+        <path d="M 612 74 A 66 66 0 0 1 648 124" fill="none" stroke="var(--cat-4)" stroke-width="1.3" marker-end="url(#a4)"></path>
+        <path d="M 664 156 A 66 66 0 0 1 612 206" fill="none" stroke="var(--cat-4)" stroke-width="1.3" marker-end="url(#a4)"></path>
+        <path d="M 544 206 A 66 66 0 0 1 508 156" fill="none" stroke="var(--cat-4)" stroke-width="1.3" marker-end="url(#a4)"></path>
+        <path d="M 512 124 A 66 66 0 0 1 544 74" fill="none" stroke="var(--cat-4)" stroke-width="1.8" marker-end="url(#a4)"></path>
+        <text x="490" y="108" font-family="ui-monospace, monospace" font-size="9.5" fill="var(--cat-4)">замыкание</text>
+        <text x="578" y="245" font-family="ui-monospace, monospace" font-size="10" fill="currentColor" opacity="0.65" text-anchor="middle">данные с прогона → в следующий ресёрч</text>
+
+        <line x1="712" y1="14" x2="712" y2="256" stroke="currentColor" stroke-opacity="0.15"></line>
+
+        <!-- D. Исполнительный слой -->
+        <text x="732" y="20" font-family="ui-monospace, monospace" font-size="11.5" fill="var(--cat-3)" letter-spacing="1">D · ИСПОЛНИТЕЛЬ</text>
+        <text x="732" y="38" font-family="ui-monospace, monospace" font-size="10.5" fill="currentColor" opacity="0.6">скилл = рубрика, цифры снаружи</text>
+        <rect x="732" y="70" width="120" height="34" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.45"></rect>
+        <text x="792" y="91" font-family="ui-monospace, monospace" font-size="10" fill="currentColor" text-anchor="middle">SKILL.md</text>
+        <line x1="792" y1="104" x2="792" y2="126" stroke="var(--cat-3)" stroke-width="1.3" marker-end="url(#a3)"></line>
+        <text x="800" y="120" font-family="ui-monospace, monospace" font-size="9.5" fill="var(--cat-3)">зовёт</text>
+        <rect x="732" y="132" width="120" height="34" rx="2" fill="none" stroke="var(--cat-3)" stroke-width="1.6"></rect>
+        <text x="792" y="153" font-family="ui-monospace, monospace" font-size="10" fill="var(--cat-3)" text-anchor="middle">коннектор / MCP</text>
+        <line x1="792" y1="166" x2="792" y2="188" stroke="var(--cat-3)" stroke-width="1.3" marker-end="url(#a3)"></line>
+        <rect x="732" y="194" width="120" height="42" rx="2" fill="none" stroke="currentColor" stroke-opacity="0.45" stroke-dasharray="4 3"></rect>
+        <text x="792" y="211" font-family="ui-monospace, monospace" font-size="9.5" fill="currentColor" text-anchor="middle">Meta Ads · GSC</text>
+        <text x="792" y="226" font-family="ui-monospace, monospace" font-size="9.5" fill="currentColor" text-anchor="middle">Search Console</text>
+        <text x="792" y="253" font-family="ui-monospace, monospace" font-size="10" fill="currentColor" opacity="0.65" text-anchor="middle">пишет наружу, не только советует</text>
+
+        <line x1="14" y1="286" x2="886" y2="286" stroke="currentColor" stroke-opacity="0.15"></line>
+        <text x="14" y="312" font-family="ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.8">Разница не в числе скиллов, а в том, кто решает, какой скилл следующий:</text>
+        <text x="14" y="334" font-family="ui-monospace, monospace" font-size="11.5" fill="var(--cat-1)">A — человек в чате.</text>
+        <text x="200" y="334" font-family="ui-monospace, monospace" font-size="11.5" fill="var(--cat-2)">B — секция «Next Best Skill» в контракте.</text>
+        <text x="14" y="356" font-family="ui-monospace, monospace" font-size="11.5" fill="var(--cat-4)">C — поле chain_metadata.</text>
+        <text x="240" y="356" font-family="ui-monospace, monospace" font-size="11.5" fill="var(--cat-3)">D — ответ внешнего API.</text>
+        <text x="14" y="386" font-family="ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.8">Библиотека дешевле всех в поддержке и бесполезна без опытного оператора.</text>
+        <text x="14" y="408" font-family="ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.8">Конвейер и маховик работают без него, но требуют, чтобы выход каждого скилла был формализован.</text>
+      </svg>
+      <figcaption><b>Четыре способа связать скиллы.</b> Почти все разобранные репозитории — это один из четырёх типов или их смесь. Тип определяет не удобство, а то, можно ли отдать процесс агенту целиком: у A порядок живёт в голове маркетолога, у B и C — в самих файлах, у D часть решений вынесена во внешнюю систему.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="marker">§ 06</span><h2>Ворота качества · то, чего нет у большинства</h2></div>
+
+    <figure>
+      <svg viewBox="0 0 860 250" role="img" aria-label="Механизм аудиторских ворот: черновик проходит рубрику со штрафами, вердикт SHIP выпускает результат, FIX возвращает на доработку не более трёх раз, BLOCK останавливает и эскалирует">
+        <defs>
+          <marker id="ag" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="var(--accent)"></polygon></marker>
+          <marker id="ag2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><polygon points="0,0 10,5 0,10" fill="currentColor"></polygon></marker>
+        </defs>
+
+        <rect x="16" y="82" width="112" height="46" rx="3" fill="none" stroke="currentColor" stroke-opacity="0.45"></rect>
+        <text x="72" y="103" font-family="ui-monospace, monospace" font-size="11" fill="currentColor" text-anchor="middle">генератор</text>
+        <text x="72" y="118" font-family="ui-monospace, monospace" font-size="11" fill="currentColor" opacity="0.6" text-anchor="middle">черновик</text>
+
+        <line x1="128" y1="105" x2="176" y2="105" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2" marker-end="url(#ag2)"></line>
+
+        <rect x="184" y="60" width="176" height="90" rx="3" fill="none" stroke="currentColor" stroke-opacity="0.45"></rect>
+        <text x="198" y="80" font-family="ui-monospace, monospace" font-size="11" fill="currentColor">аудитор · рубрика</text>
+        <line x1="198" y1="88" x2="346" y2="88" stroke="currentColor" stroke-opacity="0.2"></line>
+        <text x="198" y="105" font-family="ui-monospace, monospace" font-size="10.5" fill="currentColor" opacity="0.75">старт 100 · критич. −25</text>
+        <text x="198" y="121" font-family="ui-monospace, monospace" font-size="10.5" fill="currentColor" opacity="0.75">высок. −15 · средн. −8</text>
+        <text x="198" y="137" font-family="ui-monospace, monospace" font-size="10.5" fill="currentColor" opacity="0.75">взвеш. сумма по 5 осям</text>
+
+        <line x1="360" y1="105" x2="404" y2="105" stroke="currentColor" stroke-opacity="0.5" stroke-width="1.2" marker-end="url(#ag2)"></line>
+
+        <polygon points="466,60 522,105 466,150 410,105" fill="none" stroke="var(--accent)" stroke-width="1.8"></polygon>
+        <text x="466" y="101" font-family="ui-monospace, monospace" font-size="10.5" fill="var(--accent)" text-anchor="middle">≥ 90 и</text>
+        <text x="466" y="115" font-family="ui-monospace, monospace" font-size="10.5" fill="var(--accent)" text-anchor="middle">ноль P0?</text>
+
+        <line x1="522" y1="105" x2="600" y2="105" stroke="var(--accent)" stroke-width="1.6" marker-end="url(#ag)"></line>
+        <text x="536" y="97" font-family="ui-monospace, monospace" font-size="11" fill="var(--accent)">SHIP</text>
+        <rect x="608" y="82" width="128" height="46" rx="3" fill="none" stroke="var(--accent)" stroke-width="1.5"></rect>
+        <text x="672" y="110" font-family="ui-monospace, monospace" font-size="11" fill="var(--accent)" text-anchor="middle">к человеку</text>
+
+        <path d="M 466 60 L 466 26 L 72 26 L 72 78" fill="none" stroke="currentColor" stroke-opacity="0.55" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ag2)"></path>
+        <text x="240" y="20" font-family="ui-monospace, monospace" font-size="11" fill="currentColor" opacity="0.75">FIX · с перечнем правок · не более 3 кругов</text>
+
+        <path d="M 466 150 L 466 190 L 608 190" fill="none" stroke="currentColor" stroke-opacity="0.55" stroke-width="1.2" marker-end="url(#ag2)"></path>
+        <text x="478" y="184" font-family="ui-monospace, monospace" font-size="11" fill="currentColor" opacity="0.75">BLOCK · 4-й круг</text>
+        <rect x="616" y="172" width="128" height="38" rx="3" fill="none" stroke="currentColor" stroke-opacity="0.45" stroke-dasharray="4 3"></rect>
+        <text x="680" y="196" font-family="ui-monospace, monospace" font-size="10.5" fill="currentColor" opacity="0.8" text-anchor="middle">эскалация</text>
+
+        <line x1="16" y1="224" x2="844" y2="224" stroke="currentColor" stroke-opacity="0.15"></line>
+        <text x="16" y="244" font-family="ui-monospace, monospace" font-size="11.5" fill="currentColor" opacity="0.8">Смысл конструкции одной строкой: пользователь никогда не первый ревьюер.</text>
+      </svg>
+      <figcaption><b>Аудиторские ворота</b> — главное, что отличает верхушку рейтинга от репозиториев на 20 звёзд. У большинства скилл заканчивается генерацией: сгенерировал — отдал. У <code>claude-blog</code> (5 ворот), <code>aaron-marketing-skills</code> (гейт в каждой из семи дисциплин) и <code>openclaudia</code> (взвешенный скоринг со штрафами) между генератором и человеком стоит вторая, недоверчивая инстанция с числовым порогом и лимитом итераций.</figcaption>
+    </figure>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="marker">§ 07</span><h2>Разбор · двенадцать репозиториев</h2></div>
+
+    <div class="dossier">
+
+      <article class="entry">
+        <div class="rail">
+          <div class="rank">01</div>
+          <div class="repo"><span class="owner">coreyhaines31/</span>marketingskills</div>
+          <span class="tag a1">Библиотека</span>
+          <dl class="spec">
+            <div><dt>Звёзд</dt><dd>43 026</dd></div>
+            <div><dt>Скиллов</dt><dd>51</dd></div>
+            <div><dt>Категорий</dt><dd>7</dd></div>
+            <div><dt>Коммит</dt><dd>29.07.2026</dd></div>
+            <div><dt>Создан</dt><dd>15.01.2026</dd></div>
+          </dl>
+        </div>
+        <div class="body">
+          <h4>Что это</h4>
+          <p>Эталон жанра и причина, по которой жанр вообще появился. 51 markdown-файл: CRO (cro, signup, onboarding, popups, paywalls), копирайтинг, SEO (seo-audit, ai-seo, programmatic-seo, schema), реклама, аналитика, удержание, growth-инжиниринг, стратегия и монетизация. Работает в Claude Code, Codex, Cursor, Windsurf — везде, где поддержан стандарт Agent Skills.</p>
+
+          <h4>Как устроено внутри</h4>
+          <p>Ценность не в количестве, а в двух решениях. Первое — <code>product-marketing</code> как единственный фундамент: «каждый скилл проверяет его первым». Позиционирование, ICP и тон живут в одном месте, остальные 50 скиллов их наследуют вместо того, чтобы переспрашивать.</p>
+          <p>Второе — <code>description</code> во фронтматтере написан как список того, что человек реально говорит, а не как определение. У скилла <code>cro</code> там перечислены «моя посадочная — отстой», «никто не конвертится», «форму бросают» и отдельно оговорено, что скилл срабатывает, даже если пользователь просто кинул ссылку без вопроса. Там же явные границы: за флоу регистрации — к <code>signup</code>, за поп-апы — к <code>popups</code>. Это единственный текст, который агент видит до загрузки тела, и он написан под матчинг, а не под чтение человеком.</p>
+          <p>Само тело <code>cro</code> — это рубрика из семи осей (ясность ценности, заголовок, CTA, визуальная иерархия, сигналы доверия, отработка возражений, точки трения), фиксированный формат вывода (быстрые победы → высокоэффективные изменения → идеи тестов) и подшивки под тип страницы. В конце — блок Related Skills, по которому агент сам переходит дальше.</p>
+          <p>В версии 2.0 репозиторий <em>сократился</em>: 17 скиллов схлопнули, <code>page-cro</code> и <code>form-cro</code> слили в один <code>cro</code>. Редкий случай, когда библиотеку чистят, а не наращивают.</p>
+
+          <div class="steal"><b>Что забрать:</b> один контекст-файл как источник правды для всех скиллов, и <code>description</code>, набитый живыми формулировками вместо терминов.</div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="rail">
+          <div class="rank">02</div>
+          <div class="repo"><span class="owner">aaron-he-zhu/</span>aaron-marketing-skills</div>
+          <span class="tag a2">Конвейер</span>
+          <dl class="spec">
+            <div><dt>Звёзд</dt><dd>2 508</dd></div>
+            <div><dt>Скиллов</dt><dd>120</dd></div>
+            <div><dt>Дисциплин</dt><dd>7 × 16</dd></div>
+            <div><dt>Коммит</dt><dd>05.08.2026</dd></div>
+            <div><dt>Команд</dt><dd>8</dd></div>
+          </dl>
+        </div>
+        <div class="body">
+          <h4>Что это</h4>
+          <p>Самая инженерная вещь в подборке. Семь дисциплин ровно по 16 скиллов: Narrative (TALE), SEO/GEO (SITE), Social (ECHO), Email (SEND), Paid Ads (ROAS), Influencer (STAR), Launch (RAMP) плюс Protocol. Четыре архитектурных слоя — стратегия, всегда-включённые каналы, оркестрация запусков, протокол общего состояния.</p>
+
+          <h4>Как устроено внутри</h4>
+          <p>Каждая дисциплина — четырёхфазная петля с воротами на выходе. У Paid Ads это Research → Orchestrate → Activate → Scale, и после каждой фазы стоит скилл-аудитор, выдающий вердикт <strong>SHIP / FIX / BLOCK</strong> по своей рамке (ROAS для платного, CORE-EEAT для контента, CITE для доверия к домену, SEND для писем, RAMP для готовности запуска).</p>
+          <p>Скиллы связаны не «см. также», а жёстким контрактом из семи секций: Trigger, Quick Start, Skill Contract, Handoff Summary, Data Sources, Instructions, Next Best Skill. Handoff Summary — формализованный выход, Next Best Skill — явный указатель на следующий шаг. За счёт этой пары цепочка становится детерминированной: агент не выбирает, что делать дальше, он это читает.</p>
+          <p>Состояние между дисциплинами живёт в семи append-only реестрах (сущности, креаторы, заявления, согласия, запуски, каналы, нарратив) — чтобы SEO и Influencer не расходились в фактах о продукте. Всё это «keyless by default»: у каждого скилла есть путь Tier-1 без API-ключей, интеграции — опциональный слой, а не условие запуска.</p>
+          <p>Отдельно стоит отметить, что автопостинг и накрутка вовлечения исключены намеренно — социальная дисциплина готовит материал, но не публикует.</p>
+
+          <div class="steal"><b>Что забрать:</b> контракт из семи секций и вердикт-гейт. Это самая переносимая конструкция во всей подборке.</div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="rail">
+          <div class="rank">03</div>
+          <div class="repo"><span class="owner">wondelai/</span>skills</div>
+          <span class="tag a1">Библиотека</span>
+          <dl class="spec">
+            <div><dt>Звёзд</dt><dd>1 840</dd></div>
+            <div><dt>Скиллов</dt><dd>50 + 12</dd></div>
+            <div><dt>Категорий</dt><dd>8</dd></div>
+            <div><dt>Коммит</dt><dd>22.07.2026</dd></div>
+            <div><dt>Создан</dt><dd>29.01.2026</dd></div>
+          </dl>
+        </div>
+        <div class="body">
+          <h4>Что это</h4>
+          <p>Фреймворки из деловых бестселлеров, переписанные в исполняемые скиллы. <code>jobs-to-be-done</code> — Кристенсен, <code>storybrand-messaging</code> — Дональд Миллер, <code>blue-ocean-strategy</code> — Ким и Моборн, <code>clean-code</code> — Роберт Мартин. Восемь категорий: продуктовая стратегия, UX, маркетинг и конверсия, продажи, продуктовые инновации, бизнес-стратегия, управление командой, инженерия.</p>
+
+          <h4>Как устроено внутри</h4>
+          <p>Два механизма, которых нет у соседей. Первый — скилл ведёт диалог пофазно: задаёт структурированные вопросы, а не выдаёт полотно. Второй, и более интересный — <strong>состояние сохраняется в папке <code>docs/</code> проекта между сессиями</strong>. Большинство скиллов stateless: закрыл чат — начал заново. Здесь фреймворк, начатый в понедельник, продолжается в среду с того же места.</p>
+          <p>Над 50 атомарными скиллами надстроены 12 метаскиллов — <code>create-business</code>, <code>improve-app</code>, <code>remove-technical-debt</code>, — каждый последовательно оркестрирует 8–10 базовых. Это ответ на вопрос «а с чего начать», который убивает большие библиотеки.</p>
+
+          <div class="steal"><b>Что забрать:</b> персистентное состояние в файлах проекта и слой метаскиллов-маршрутов поверх атомарных.</div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="rail">
+          <div class="rank">04</div>
+          <div class="repo"><span class="owner">Eronred/</span>aso-skills</div>
+          <span class="tag a3">Исполнитель</span>
+          <dl class="spec">
+            <div><dt>Звёзд</dt><dd>1 710</dd></div>
+            <div><dt>Скиллов</dt><dd>40+</dd></div>
+            <div><dt>Категорий</dt><dd>10</dd></div>
+            <div><dt>Коммит</dt><dd>27.07.2026</dd></div>
+            <div><dt>Данные</dt><dd>Appeeky API</dd></div>
+          </dl>
+        </div>
+        <div class="body">
+          <h4>Что это</h4>
+          <p>Узкая вертикаль — App Store Optimization и маркетинг мобильных приложений. Ядро: <code>aso-audit</code>, <code>keyword-research</code>, <code>metadata-optimization</code>, <code>competitor-analysis</code>, <code>seasonal-aso</code>, <code>android-aso</code>. Дальше — креативы и локализация (6), рост (10: запуск, UA-кампании, Apple Search Ads, партнёрства с креаторами, web-to-app воронки), выручка и удержание (6), аналитика (5), рыночная разведка (3).</p>
+
+          <h4>Как устроено внутри</h4>
+          <p>Чёткое разделение труда: <em>в markdown лежит рубрика скоринга и шаблон вывода, цифры приходят из API</em>. Appeeky API отдаёт живые позиции по ключам, метаданные конкурентов, оценки загрузок и движение в чартах; Appeeky Connect подтягивает первичные данные App Store Connect с ночной синхронизацией.</p>
+          <p>Отдельная находка — скилл <code>aso-router</code>: если запрос неконкретный, срабатывает он и разводит по специалистам. Это дешёвый способ побороть главную болезнь библиотеки на 40 скиллов — агент грузит не тот файл.</p>
+
+          <div class="steal"><b>Что забрать:</b> скилл-роутер как точку входа и принцип «рубрика в файле, цифры из API».</div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="rail">
+          <div class="rank">05</div>
+          <div class="repo"><span class="owner">AgriciDaniel/</span>claude-blog</div>
+          <span class="tag a2">Конвейер</span>
+          <dl class="spec">
+            <div><dt>Звёзд</dt><dd>1 572</dd></div>
+            <div><dt>Сабскиллов</dt><dd>31 + 1</dd></div>
+            <div><dt>Агентов</dt><dd>5</dd></div>
+            <div><dt>Ворот</dt><dd>5</dd></div>
+            <div><dt>Коммит</dt><dd>23.07.2026</dd></div>
+          </dl>
+        </div>
+        <div class="body">
+          <h4>Что это</h4>
+          <p>Контент-конвейер под одну задачу — блог, но доведённый до продакшена. 32 директории = 1 оркестратор + 31 сабскилл, доступных как <code>/blog write</code>, <code>/blog brief</code>, <code>/blog seo-check</code>, <code>/blog factcheck</code>, <code>/blog cannibalization</code>, <code>/blog decay</code>, <code>/blog persona</code>, <code>/blog translate</code> и так далее.</p>
+
+          <h4>Как устроено внутри</h4>
+          <p>Центральная конструкция — <strong>Blog Delivery Contract из пяти ворот</strong>, через которые обязан пройти любой черновик:</p>
+          <ul>
+            <li><strong>Ворота 1 · возможности</strong> — проверка, что нужные инструменты и API вообще доступны;</li>
+            <li><strong>Ворота 2 · полнота форматов</strong> — markdown, HTML, PDF и hero-изображение сгенерированы;</li>
+            <li><strong>Ворота 3 · визуальная проверка</strong> — вёрстка на 375, 768 и 1280 px, валидный JSON-LD, работающая тёмная тема;</li>
+            <li><strong>Ворота 4 · ревью контента</strong> — агент-ревьюер обязан выдать ≥ 90 баллов и ноль проблем уровня P0;</li>
+            <li><strong>Ворота 5 · ассеты и ссылки</strong> — разрешение картинок, OG-теги, живые ссылки, честный счётчик слов.</li>
+          </ul>
+          <p>На провале система итерируется до трёх раз, затем эскалирует. Формулировка авторов — «пользователь никогда не первый ревьюер» — и есть весь смысл. Отдельная цель конвейера: попадание в AI Overview, Perplexity и ChatGPT через скоринг цитируемости на подтверждённых источниках.</p>
+
+          <div class="steal"><b>Что забрать:</b> сам принцип «не отдавать, пока не прошло ворота», с числовым порогом и лимитом итераций.</div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="rail">
+          <div class="rank">06</div>
+          <div class="repo"><span class="owner">mikiarlo3/</span>ai-copywriter</div>
+          <span class="tag a1">Один файл</span>
+          <dl class="spec">
+            <div><dt>Звёзд</dt><dd>1 023</dd></div>
+            <div><dt>За</dt><dd>12 дней</dd></div>
+            <div><dt>Файлов</dt><dd>1</dd></div>
+            <div><dt>Объём</dt><dd>~8k токенов</dd></div>
+            <div><dt>Создан</dt><dd>24.07.2026</dd></div>
+          </dl>
+        </div>
+        <div class="body">
+          <h4>Что это</h4>
+          <p>Единственный настоящий прорыв месяца: 1023 звезды за двенадцать дней при том, что весь репозиторий — один markdown-файл. Форк <code>blader/Humanizer</code>, объединивший две обычно разнесённые функции: писать цепляющий текст и вычищать из него следы ИИ.</p>
+
+          <h4>Как устроено внутри</h4>
+          <p>До написания первой строки скилл задаёт себе два вопроса: <em>что человек чувствует ровно в тот момент, когда строка до него доходит</em> и <em>как объяснить это самым простым способом</em>. Первый определяет тон, длину и порядок информации; второй требует лексики кухонного разговора, коротких предложений, одной мысли на строку.</p>
+          <p>Дальше — интервью на входе: ICP с точностью до поисковой строки, категория и конкурентный контекст, история с реальными цифрами. Общие ответы скилл не принимает: он их прожимает и требует доказательств интереса, прежде чем идти дальше.</p>
+          <p>Профили читателя прописаны по форматам, и это лучшая часть файла. Заголовок — читатель в середине скролла, он вам ничего не должен, нужны конкретика и разрыв любопытства. Короткое описание — читатель в режиме сравнения, уже обжигался, выгода обязана быть в первых пяти словах. Микрокопия — читатель посреди задачи: кнопка называет результат, ошибка объясняет, что сломалось. Тема письма — читатель чистит инбокс рефлекторно, выгода должна уложиться в 30–40 символов.</p>
+          <p>Гуманизатор ловит <strong>33 паттерна</strong> по вики-статье «Signs of AI writing»: инфляция значимости, размытая атрибуция, рекламный язык, слова-маркеры вроде «testament», уход от связки через «serves as», списки-тройки, злоупотребление длинным тире и жирным, Title Case в заголовках, искусственная рубленая ритмика, чат-ботовые любезности, фальшивая прямота, хеджирование и филлеры. Цикл: обнаружить → переписать → проверить → переписать.</p>
+          <p>Сквозное ограничение обеих половин — не выдумывать. Если самый сильный заголовок требует цифры, цифру даёт пользователь.</p>
+
+          <div class="steal"><b>Что забрать:</b> таблицу из 33 паттернов как чек-лист для текстов объявлений, и «профиль читателя по формату» — прямой аналог вашей связки хук / боди.</div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="rail">
+          <div class="rank">07</div>
+          <div class="repo"><span class="owner">indranilbanerjee/</span>digital-marketing-pro</div>
+          <span class="tag a2">Конвейер</span>
+          <dl class="spec">
+            <div><dt>Звёзд</dt><dd>705</dd></div>
+            <div><dt>Скиллов</dt><dd>158</dd></div>
+            <div><dt>Агентов</dt><dd>24</dd></div>
+            <div><dt>Скриптов</dt><dd>86</dd></div>
+            <div><dt>Платформ</dt><dd>8 + 40</dd></div>
+          </dl>
+        </div>
+        <div class="body">
+          <h4>Что это</h4>
+          <p>Самая крупная и самая «агентская» сборка: 158 скиллов, 24 специализированных агента (стратег, хранитель бренда, контентщик, email-специалист, SMM, PR, SEO, CRO, аналитик плюс операционные — growth-инженер, оркестратор путей, монитор эффективности, QA, менеджер памяти, координатор исполнения), 18 команд верхнего уровня, 169 справочных файлов с комплаенсом по 16 юрисдикциям.</p>
+
+          <h4>Как устроено внутри</h4>
+          <p>Три механизма стоят внимания вне зависимости от того, будете вы это ставить или нет.</p>
+          <p><strong>Living Project Instruction File</strong> — один живой файл-инструкция на проект. Каждый агент читает его перед действием, поэтому правка распространяется вниз по всем скиллам автоматически, а не переписывается в пяти местах.</p>
+          <p><strong>Пронумерованные промежуточные файлы.</strong> Тяжёлые скиллы (<code>engagement</code>, <code>campaign-plan</code>) не отдают монолитный результат — они пишут пронумерованные промежуточные артефакты, чтобы отдельный шаг можно было перезапустить без полного пересчёта. Простая вещь, которая экономит и деньги, и нервы.</p>
+          <p><strong>Two-Views Model.</strong> v1 — исходный анализ рынка, v2 — версия, подтверждённая клиентом. Матрица решений сопоставляет ответы валидации с тем, какие документы нужно перезапустить, — чтобы не пересчитывать всё и не пропускать зависимости.</p>
+          <p>Авторы честно указывают стоимость: около $15–40 API на полный двенадцатичастный цикл на моделях уровня Opus.</p>
+
+          <div class="steal"><b>Что забрать:</b> пронумерованные промежуточные файлы и матрицу «что перезапускать после правки». Это прямо ложится на генерацию брифов.</div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="rail">
+          <div class="rank">08</div>
+          <div class="repo"><span class="owner">OpenClaudia/</span>openclaudia-skills</div>
+          <span class="tag a3">Исполнитель</span>
+          <dl class="spec">
+            <div><dt>Звёзд</dt><dd>614</dd></div>
+            <div><dt>Скиллов</dt><dd>69+</dd></div>
+            <div><dt>Интеграций</dt><dd>20+ API</dd></div>
+            <div><dt>Коммит</dt><dd>04.08.2026</dd></div>
+            <div><dt>Лицензия</dt><dd>open source</dd></div>
+          </dl>
+        </div>
+        <div class="body">
+          <h4>Что это</h4>
+          <p>Позиционируется как замена маркетинговому SaaS за $50–300 в месяц. Заявленное отличие — не советует, а делает: пишет, публикует и отправляет через два десятка интеграций, данные остаются локально. SEO 9 скиллов, контент 8, email 2, соцсети 6, реклама и CRO 6, аналитика 11, стратегия 8, мессенджеры 4, ассеты 4, рост 10.</p>
+
+          <h4>Как устроено внутри</h4>
+          <p>Показателен <code>seo-audit</code> — он объясняет, как вообще делать воспроизводимую оценку. Пять взвешенных категорий: краулинг и индексация 20%, техническая база 25%, on-page 25%, качество контента 15%, авторитет и ссылки 15%. Каждая стартует со 100 баллов и штрафуется по тяжести находки: критичное −25, высокое −15, среднее −8, низкое −3. Итог — взвешенная сумма, таблица по категориям, приоритизированные списки и план работ на четыре недели.</p>
+          <p>Данные собираются, а не придумываются: WebFetch по HTML, robots.txt и sitemap, выборка из нескольких страниц, вызовы Google PageSpeed API отдельно для мобайла и десктопа. Отдельным правилом закреплено — каждая рекомендация обязана опираться на измеренное значение, выдуманные цифры запрещены.</p>
+
+          <div class="steal"><b>Что забрать:</b> взвешенный скоринг с явными штрафами. Он превращает «оцени креатив» из мнения в воспроизводимое число.</div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="rail">
+          <div class="rank">09</div>
+          <div class="repo"><span class="owner">aitytech/</span>agentkits-marketing</div>
+          <span class="tag a3">Исполнитель</span>
+          <dl class="spec">
+            <div><dt>Звёзд</dt><dd>578</dd></div>
+            <div><dt>Скиллов</dt><dd>28</dd></div>
+            <div><dt>Команд</dt><dd>93</dd></div>
+            <div><dt>Агентов</dt><dd>18</dd></div>
+            <div><dt>Коммит</dt><dd>15.07.2026</dd></div>
+          </dl>
+        </div>
+        <div class="body">
+          <h4>Что это</h4>
+          <p>Корпоративный уклон: 28 скиллов, 93 слэш-команды, 18 агентов, разложенных на три роли — основные (специалист по привлечению, квалификатор лидов, email-волшебник), поддерживающие (ресёрчер, копирайтер, проджект) и ревьюеры.</p>
+
+          <h4>Как устроено внутри</h4>
+          <p>Два элемента заслуживают копирования. Первый — MCP-интеграции с реальными источниками: Sensor Tower, Search Console, Google Analytics, Semrush, Meta Ads, HubSpot. Скилл не спрашивает цифры у пользователя, он их забирает.</p>
+          <p>Второй — <strong>ревьюер-агенты с разными линзами на один артефакт</strong>: хранитель голоса бренда, оптимизатор конверсии и SEO-специалист смотрят на один и тот же текст и дают несводимую обратную связь. Это дешевле, чем один «универсальный критик», и ловит разные классы проблем.</p>
+
+          <div class="steal"><b>Что забрать:</b> несколько ревьюеров с разными линзами вместо одного общего критика.</div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="rail">
+          <div class="rank">10</div>
+          <div class="repo"><span class="owner">Varnan-Tech/</span>opendirectory</div>
+          <span class="tag a1">Библиотека</span>
+          <dl class="spec">
+            <div><dt>Звёзд</dt><dd>571</dd></div>
+            <div><dt>Скиллов</dt><dd>64</dd></div>
+            <div><dt>Доменов</dt><dd>6</dd></div>
+            <div><dt>Агентов</dt><dd>8 хостов</dd></div>
+            <div><dt>Коммит</dt><dd>31.07.2026</dd></div>
+          </dl>
+        </div>
+        <div class="body">
+          <h4>Что это</h4>
+          <p>«Скиллы для основателей, которые ненавидят маркетинг». 64 скилла: визуал и медиа 10 (обложки, PDF-кейсы, графики, GIF, слайды, видео к запуску), контент 11, запуск 5 (нейминг, чейнджлоги, Product Hunt, посты на Hacker News), GTM-разведка 18, аутрич 2, ресёрч 11, дев-инструменты 9.</p>
+
+          <h4>Как устроено внутри</h4>
+          <p>Самая крупная группа — не контент, а GTM-разведка: детекция сигналов спроса по GitHub, Reddit и Hacker News, отслеживание найма как индикатора бюджета, поиск сообществ клиентов, подбор фондов, разбор ценообразования конкурентов. Скиллы ранжируются в каталоге по «качеству артефакта на выходе», а не по объёму зашитых знаний — и это заметно по формулировкам: почти каждый скилл заканчивается конкретным файлом, а не рекомендацией.</p>
+
+          <div class="steal"><b>Что забрать:</b> сигналы спроса из публичных источников как вход в генерацию гипотез — у вас эту роль сейчас выполняет только база конкурентов.</div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="rail">
+          <div class="rank">11</div>
+          <div class="repo"><span class="owner">minhnv0807/</span>ai-business-skills</div>
+          <span class="tag a1">Библиотека</span>
+          <dl class="spec">
+            <div><dt>Звёзд</dt><dd>521</dd></div>
+            <div><dt>Скиллов</dt><dd>63</dd></div>
+            <div><dt>Агентов</dt><dd>5</dd></div>
+            <div><dt>Воркфлоу</dt><dd>15</dd></div>
+            <div><dt>Коммит</dt><dd>30.07.2026</dd></div>
+          </dl>
+        </div>
+        <div class="body">
+          <h4>Что это</h4>
+          <p>Билингвальная сборка: 31 вьетнамский скилл и 31 глобальный, парные версии с автоопределением языка. Кластеры — маркетинговое ядро (24+24), персональный бренд (7+7), региональный флагман (экспортный B2B для Вьетнама против дропшиппинга для глобального рынка), дизайн-мастер на восемь типов макетов.</p>
+
+          <h4>Как устроено внутри</h4>
+          <p>Интереснее всего — <strong>зашитые рыночные бенчмарки</strong>: целевые CPM, ожидаемый ROAS, метрики по каналам на 2025–2026 лежат прямо в скиллах, а не сообщаются агенту в промпте. Плюс региональные варианты для US, EU, SEA и LATAM, которые различают валюту, требования к приватности и предпочтения по каналам. Пять универсальных агентов и 15 воркфлоу-цепочек (запуск кампании, онбординг клиента, месячный цикл, батч AI-аватаров) собирают скиллы в последовательности. Контекстные файлы-фундаменты, по замерам авторов, снимают около 70% повторных объяснений.</p>
+
+          <div class="steal"><b>Что забрать:</b> нормативы в файле скилла, а не в промпте. Ваши CPL ≤ €20, CPQL ≤ €28 и порог 8000 показов должны жить именно там.</div>
+        </div>
+      </article>
+
+      <article class="entry">
+        <div class="rail">
+          <div class="rank">12</div>
+          <div class="repo"><span class="owner">Affitor/</span>affiliate-skills</div>
+          <span class="tag a4">Маховик</span>
+          <dl class="spec">
+            <div><dt>Звёзд</dt><dd>586</dd></div>
+            <div><dt>Скиллов</dt><dd>52</dd></div>
+            <div><dt>Стадий</dt><dd>8</dd></div>
+            <div><dt>Коммит</dt><dd>14.06.2026</dd></div>
+            <div><dt>Статус</dt><dd>вне окна</dd></div>
+          </dl>
+        </div>
+        <div class="body">
+          <h4>Что это</h4>
+          <p>В срез A формально не попал — последний коммит в июне. Разобран потому, что архитектурно это единственный чистый пример замкнутого цикла в подборке. 52 скилла по восьми стадиям: S1 ресёрч и поиск программ (9), S2 контент (7), S3 блог и SEO (7), S4 офферы и посадочные (8), S5 дистрибуция (4), S6 аналитика и оптимизация (5), S7 автоматизация и масштабирование (5), S8 мета — планирование, комплаенс, ретроспектива (5).</p>
+
+          <h4>Как устроено внутри</h4>
+          <p>Ключевых механизма два. Первый — <strong>S6 возвращает данные в S1</strong>: результаты замеров становятся входом следующего цикла ресёрча, и петля замыкается физически, а не на словах. Второй — поле <code>chain_metadata</code> в каждом скилле, где записано, что идёт следующим. Агент выстраивает последовательность сам, без ручных передач между шагами.</p>
+          <p>Данные тянутся из openaffiliate.dev (комиссии, сроки cookie) и MCP-сервера hidrix-tools: поиск по X с метриками вовлечения, Reddit, YouTube, TikTok, Meta Ad Library, Similarweb. Заявленный принцип — сначала посмотреть, какие форматы и хуки реально работают в выдаче, и только потом писать.</p>
+
+          <div class="steal"><b>Что забрать:</b> <code>chain_metadata</code> и физическое замыкание петли аналитика → ресёрч. У вас это ровно связка <code>/weekly</code> → <code>/builder</code>.</div>
+        </div>
+      </article>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="marker">§ 08</span><h2>Ещё четыре, коротко</h2></div>
+    <div class="prose">
+      <h3>acogood/diffmode_free · 153★</h3>
+      <p>Самая необычная механика месяца. Пайплайн ищет не «канал», а <em>механизм</em>: почему конкретный ход сработал. Порядок принципиален — система сначала вслепую вытягивает механизмы из кейсов, <strong>до того как узнаёт, какие тактики из них получатся</strong>, и только потом прогоняет их через отбраковочные ворота, которые режут всё, что предложил бы средний маркетолог. На выходе 7–9 неочевидных тактик. Новизна здесь — результат выживания, а не генерации. 13 скилл-файлов, stateless-воркеры, оркестрация через DAG с ретраями.</p>
+
+      <h3>davidpc007/openclaw-marketing-skills · 147★</h3>
+      <p>37 скиллов, из которых интересен один слой — Data Connectors: живые подключения к Google Ads, Search Console, Meta Ads и X. Ровно та граница, где скилл перестаёт быть текстом и начинает опираться на факты аккаунта.</p>
+
+      <h3>kostja94/marketing-skills · 852★ (коммитов в окне нет)</h3>
+      <p>160+ скиллов в девяти доменах, включая 40+ шаблонов страниц. Заявленная особенность — чистый markdown без исполняемого кода как аргумент безопасности: скилл нечему выполнить, значит нечего эксплуатировать. Требует файл <code>project-context.md</code>, иначе выдаёт обобщённое.</p>
+
+      <h3>LeadMagic/gtm-skills</h3>
+      <p>206 GTM-скиллов в 24 категориях со ссылками на 712 именованных фреймворков от 110+ практиков (MEDDICC, Force Management и прочие). Прогрессивное раскрытие описано явно: фронтматтер грузится на старте для поиска, инструкции — при совпадении, шаблоны и скрипты — по требованию. Число звёзд подтвердить не удалось, поэтому в рейтинг не включён.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="marker">§ 09</span><h2>Что из этого применимо к creative-system</h2></div>
+    <p class="prose" style="margin-bottom:24px">Восемь механизмов, которые переносятся на вашу систему без переписывания архитектуры. Слева — источник, справа — конкретное место, куда это встаёт.</p>
+    <div class="table-scroll">
+      <table class="apply">
+        <thead>
+          <tr><th>Откуда</th><th>Механизм</th><th>Куда встаёт</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>aaron-marketing-skills</td>
+            <td>Контракт из 7 секций: Trigger, Quick Start, Contract, Handoff, Data Sources, Instructions, Next Best Skill</td>
+            <td>Шаблон брифа в <code>/briefs</code>: у каждого брифа явный вход, явный выход и указатель на следующий шаг вместо свободной формы</td>
+          </tr>
+          <tr>
+            <td>claude-blog · aaron</td>
+            <td>Аудиторские ворота с вердиктом SHIP / FIX / BLOCK, порогом ≥ 90 и лимитом в 3 итерации</td>
+            <td>Перед аппрувом брифа. Сейчас первый ревьюер — человек; ворота отдают ему только то, что уже прошло рубрику</td>
+          </tr>
+          <tr>
+            <td>openclaudia · seo-audit</td>
+            <td>Взвешенный скоринг: категории с весами, старт со 100, штрафы −25 / −15 / −8 / −3</td>
+            <td>Оценка крео в <code>/weekly</code>: вместо свободной заметки — рубрика с весами, чтобы AI-разбор был воспроизводим от недели к неделе</td>
+          </tr>
+          <tr>
+            <td>affiliate-skills</td>
+            <td><code>chain_metadata</code> — поле «что идёт следующим» в каждом скилле</td>
+            <td>Связка <code>/weekly</code> → <code>/builder</code>: вывод разбора недели помечен как вход конкретного шага конструктора</td>
+          </tr>
+          <tr>
+            <td>digital-marketing-pro</td>
+            <td>Пронумерованные промежуточные файлы + матрица «что перезапускать после правки»</td>
+            <td>Генерация брифов через Claude Opus: перезапуск одного шага вместо полного пересчёта пачки на 81 комбинацию</td>
+          </tr>
+          <tr>
+            <td>marketingskills</td>
+            <td><code>product-marketing</code> как единственный контекст-файл, который читают все остальные скиллы</td>
+            <td>Один файл на поток: COM и GOV со своими ICP, болями, триггерами и плановыми метриками — вместо повторения в каждом промпте</td>
+          </tr>
+          <tr>
+            <td>ai-business-skills</td>
+            <td>Рыночные нормативы зашиты в файл скилла, а не передаются в промпте</td>
+            <td>Критерии виннера (CPL ≤ €20, CPQL ≤ €28, ≥ 8000 показов) живут в правилах <code>/admin</code>, а не в тексте запроса</td>
+          </tr>
+          <tr>
+            <td>ai-copywriter</td>
+            <td>33 паттерна следов ИИ + профиль читателя под каждый формат</td>
+            <td>Чек-лист для текстов объявлений и сценариев: хук проверяется по профилю «читатель в середине скролла», боди — по «режиму сравнения»</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="note" style="margin-top:30px">
+      <p style="margin-bottom:0"><strong>Один вывод поверх таблицы.</strong> Разница между репозиторием на 40 000 звёзд и репозиторием на 40 — не объём знаний и не число скиллов. Это наличие двух вещей: единственного источника правды о продукте, который читают все скиллы, и недоверчивой инстанции между генератором и человеком. Всё остальное — вопрос вкуса и объёма.</p>
+    </div>
+  </section>
+
+  <section>
+    <div class="sec-head"><span class="marker">§ 10</span><h2>Источники</h2></div>
+    <div class="sources">
+      <a href="https://github.com/coreyhaines31/marketingskills">coreyhaines31/marketingskills</a><br>
+      <a href="https://github.com/aaron-he-zhu/aaron-marketing-skills">aaron-he-zhu/aaron-marketing-skills</a><br>
+      <a href="https://github.com/wondelai/skills">wondelai/skills</a><br>
+      <a href="https://github.com/Eronred/aso-skills">Eronred/aso-skills</a><br>
+      <a href="https://github.com/AgriciDaniel/claude-blog">AgriciDaniel/claude-blog</a><br>
+      <a href="https://github.com/mikiarlo3/ai-copywriter">mikiarlo3/ai-copywriter</a><br>
+      <a href="https://github.com/indranilbanerjee/digital-marketing-pro">indranilbanerjee/digital-marketing-pro</a><br>
+      <a href="https://github.com/OpenClaudia/openclaudia-skills">OpenClaudia/openclaudia-skills</a><br>
+      <a href="https://github.com/aitytech/agentkits-marketing">aitytech/agentkits-marketing</a><br>
+      <a href="https://github.com/Varnan-Tech/opendirectory">Varnan-Tech/opendirectory</a><br>
+      <a href="https://github.com/minhnv0807/ai-business-skills">minhnv0807/ai-business-skills</a><br>
+      <a href="https://github.com/Affitor/affiliate-skills">Affitor/affiliate-skills</a><br>
+      <a href="https://github.com/acogood/diffmode_free">acogood/diffmode_free</a><br>
+      <a href="https://github.com/davidpc007/openclaw-marketing-skills">davidpc007/openclaw-marketing-skills</a><br>
+      <a href="https://github.com/kostja94/marketing-skills">kostja94/marketing-skills</a><br>
+      <a href="https://github.com/LeadMagic/gtm-skills">LeadMagic/gtm-skills</a><br>
+      <a href="https://github.com/krillinai/growth-skills">krillinai/growth-skills</a><br>
+      <a href="https://github.com/hogan-tech/brand-loom">hogan-tech/brand-loom</a><br>
+      <a href="https://github.com/social-media-skills/skills">social-media-skills/skills</a><br>
+      <a href="https://github.com/HiroHyun/grounded-copy">HiroHyun/grounded-copy</a><br>
+      <a href="https://github.com/topics/marketing-skills">github.com/topics/marketing-skills</a><br>
+      <a href="https://github.com/anthropics/skills">anthropics/skills — спецификация</a>
+    </div>
+
+    <p class="foot">Данные: GitHub Search API и README/SKILL.md репозиториев, выгрузка 5 августа 2026. Число звёзд — совокупное на дату выгрузки, кроме среза B, где репозиторий создан внутри окна и совокупное значение равно месячному приросту. Прирост звёзд за период GitHub не публикует — любые «+N за месяц» в других подборках являются оценкой.</p>
+  </section>
+
+</div>
+
+<div id="tip" role="status" aria-live="polite"></div>
+
+<script>
+  (function () {
+    var tip = document.getElementById('tip');
+    var rows = document.querySelectorAll('.bar-row');
+
+    function show(e) {
+      var row = e.currentTarget;
+      var name = row.querySelector('.name').textContent.trim();
+      var val = row.querySelector('.val').textContent.trim();
+      tip.innerHTML =
+        '<div class="t-name">' + name + '</div>' +
+        '<div>' + val + ' ★</div>' +
+        '<div class="t-meta">' + row.dataset.skills + '</div>' +
+        '<div class="t-meta">' + row.dataset.pushed + '</div>';
+      tip.style.opacity = '1';
+      move(e);
+    }
+
+    function move(e) {
+      var pad = 14;
+      var w = tip.offsetWidth;
+      var h = tip.offsetHeight;
+      var x = e.clientX + pad;
+      var y = e.clientY + pad;
+      if (x + w > window.innerWidth - 8) { x = e.clientX - w - pad; }
+      if (y + h > window.innerHeight - 8) { y = e.clientY - h - pad; }
+      tip.style.left = x + 'px';
+      tip.style.top = y + 'px';
+    }
+
+    function hide() { tip.style.opacity = '0'; }
+
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].addEventListener('mouseenter', show);
+      rows[i].addEventListener('mousemove', move);
+      rows[i].addEventListener('mouseleave', hide);
+    }
+  })();
+</script>
